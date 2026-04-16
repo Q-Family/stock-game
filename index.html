@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S&P 100 | Smart-Sync Terminal v3</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .hidden { display: none !important; }
+        .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 1rem; }
+        .tab-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
+        .btn-range { font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 6px; transition: all 0.2s; background: #1e293b; border: 1px solid #334155; color: #94a3b8; }
+        .btn-range.active { background: #3b82f6; border-color: #3b82f6; color: white; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .sync-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; color: #3b82f6; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+        select { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1em; }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen" class="min-h-screen flex items-center justify-center px-4">
+        <div class="card p-8 w-full max-w-md text-center shadow-2xl border-blue-500/30">
+            <h1 class="text-3xl font-black text-blue-400 mb-2 tracking-tighter uppercase">Market Insight</h1>
+            <p class="text-slate-400 mb-6 text-sm italic">Secure Portfolio Terminal</p>
+            <input type="text" id="codename" placeholder="ENTER CODENAME" 
+                   oninput="this.value = this.value.toUpperCase()"
+                   class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg mb-4 text-center text-lg font-bold text-blue-400 outline-none uppercase focus:border-blue-500">
+            <button onclick="login()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition uppercase tracking-widest">Access Terminal</button>
+        </div>
+    </div>
+
+    <div id="dashboard" class="hidden min-h-screen flex flex-col">
+        <header class="p-4 bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto flex justify-between items-center">
+                <nav class="flex space-x-8">
+                    <button onclick="switchTab('trade')" id="tab-trade" class="pb-1 text-xs font-black tab-active uppercase">Trade Desk</button>
+                    <button onclick="switchTab('list')" id="tab-list" class="pb-1 text-xs font-black text-slate-500 hover:text-white uppercase transition">Company Directory</button>
+                    <span class="text-[9px] font-bold text-slate-600 self-end pb-1">v3</span>
+                </nav>
+                <div class="flex items-center gap-4">
+                    <div id="sync-status" class="text-[9px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-500 uppercase tracking-tighter">OFFLINE</div>
+                    <span id="display-name" class="text-blue-500 font-black text-[10px] tracking-widest uppercase"></span>
+                    <button onclick="location.reload()" class="text-[10px] font-black text-red-500 border border-red-500/20 px-2 py-1 rounded">LOGOUT</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto p-4 lg:p-6 w-full flex-1">
+            <div id="section-trade" class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div class="lg:col-span-1 space-y-6">
+                    <div class="card p-6 bg-slate-900 border-blue-500/20">
+                        <p class="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Net Worth</p>
+                        <p class="text-2xl font-black text-green-400" id="net-worth">$0.00</p>
+                        <div class="mt-4 space-y-2 border-t border-slate-800 pt-4 text-[10px] font-bold uppercase">
+                            <div class="flex justify-between"><span class="text-slate-500">Cash</span><span id="cash-balance" class="text-white"></span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Portfolio</span><span id="stock-valuation" class="text-white"></span></div>
+                        </div>
+                    </div>
+                    <div class="card p-4 overflow-hidden">
+                        <h3 class="text-[10px] font-black text-slate-500 uppercase mb-4 border-b border-slate-700 pb-2">Active Holdings</h3>
+                        <table class="w-full text-left text-[10px]">
+                            <thead class="text-slate-500 font-black uppercase border-b border-slate-800">
+                                <tr>
+                                    <th class="pb-2">Asset</th>
+                                    <th class="pb-2 text-right">Value</th>
+                                    <th class="pb-2 text-right">+/-</th>
+                                </tr>
+                            </thead>
+                            <tbody id="holdings-list" class="divide-y divide-slate-800"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-3 card p-6">
+                    <div class="flex flex-col md:flex-row justify-between mb-6 gap-4">
+                        <div class="flex flex-col gap-1 w-full md:w-64">
+                            <label class="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Select Asset</label>
+                            <select id="ticker-select" onchange="loadStock(this.value)" class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 font-black uppercase text-blue-400 text-sm outline-none focus:border-blue-500 cursor-pointer">
+                            </select>
+                        </div>
+                        <div class="flex items-end gap-4">
+                            <div class="hidden md:block text-right">
+                                <p class="text-[8px] font-black text-slate-500 uppercase tracking-widest">Price Effective Date</p>
+                                <p id="effective-date-val" class="text-[10px] font-bold text-blue-400">---</p>
+                            </div>
+                            <div class="flex bg-slate-900 p-1 rounded-lg border border-slate-700 h-10">
+                                <button onclick="updateTrendRange('30D', this)" class="btn-range">30D</button>
+                                <button onclick="updateTrendRange('6M', this)" class="btn-range">6M</button>
+                                <button onclick="updateTrendRange('1Y', this)" class="btn-range active">1Y</button>
+                                <button onclick="updateTrendRange('2Y', this)" class="btn-range">2Y</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="h-80 w-full mb-6"><canvas id="stockChart"></canvas></div>
+                    <div class="bg-slate-900 p-6 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div class="text-center md:text-left">
+                            <p id="trade-ticker-label" class="text-[10px] text-slate-500 font-black uppercase tracking-widest">Ready</p>
+                            <p id="current-price" class="text-4xl font-black text-white">$0.00</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="number" id="trade-qty" placeholder="QTY" class="w-20 bg-slate-800 border border-slate-600 rounded-lg py-3 text-center font-bold">
+                            <button onclick="executeTrade('BUY')" class="bg-green-600 px-6 py-3 rounded-lg font-black hover:bg-green-500 transition">BUY</button>
+                            <button onclick="executeTrade('SELL')" class="bg-red-600 px-6 py-3 rounded-lg font-black hover:bg-red-500 transition">SELL</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="section-list" class="hidden card p-6">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+                    <div>
+                        <h2 class="text-xl font-black uppercase tracking-tighter text-blue-400">Market Directory</h2>
+                        <p id="sync-date-label" class="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Checking data freshness...</p>
+                    </div>
+                    <input type="text" id="directory-search" onkeyup="filterDirectory()" placeholder="SEARCH DIRECTORY..." class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 w-full md:w-80 text-xs font-bold text-blue-400 uppercase outline-none focus:border-blue-500">
+                </div>
+                <div class="overflow-x-auto max-h-[600px]">
+                    <table class="w-full text-left text-xs">
+                        <thead class="sticky top-0 bg-slate-800 z-10">
+                            <tr class="text-slate-400 text-[10px] uppercase font-black border-b border-slate-700">
+                                <th class="p-3">Ticker</th>
+                                <th class="p-3">Company</th>
+                                <th class="p-3">Sector</th>
+                                <th class="p-3">Profile</th>
+                                <th class="p-3 text-right">Last Close</th>
+                                <th class="p-3"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="sp500-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_KEY = '1wvcKLPhqZxh9bsg5AIp2yfQuSCG_onK'; 
+        let currentUser = "";
+        let userData = { cash: 100000, holdings: {} }; 
+        let activeStock = { ticker: "", dates: [], prices: [], sma50: [], sma200: [] };
+        let batchPrices = {};
+        let chartInstance = null;
+
+        const sp100Data = [
+            { t: "AAPL", n: "Apple Inc.", s: "Technology", d: "Consumer electronics, iPhone, Mac, services." },
+            { t: "MSFT", n: "Microsoft Corp.", s: "Technology", d: "Software, Azure cloud, Office 365." },
+            { t: "NVDA", n: "NVIDIA Corp.", s: "Technology", d: "AI chips, GPUs, data center computing." },
+            { t: "GOOGL", n: "Alphabet Inc.", s: "Communication", d: "Google Search, YouTube, Google Cloud." },
+            { t: "AMZN", n: "Amazon.com Inc.", s: "Consumer Disc.", d: "E-commerce, AWS cloud, Prime." },
+            { t: "AVGO", n: "Broadcom Inc.", s: "Technology", d: "Semiconductors and infrastructure software." },
+            { t: "META", n: "Meta Platforms", s: "Communication", d: "Facebook, Instagram, WhatsApp." },
+            { t: "TSLA", n: "Tesla Inc.", s: "Consumer Disc.", d: "Electric vehicles and clean energy." },
+            { t: "BRK.B", n: "Berkshire Hathaway", s: "Financials", d: "Diversified investment conglomerate." },
+            { t: "LLY", n: "Eli Lilly & Co.", s: "Healthcare", d: "Pharmaceuticals, GLP-1 weight loss drugs." },
+            { t: "WMT", n: "Walmart Inc.", s: "Consumer Staples", d: "Retail, grocery, e-commerce." },
+            { t: "JPM", n: "JPMorgan Chase", s: "Financials", d: "Largest U.S. bank by assets." },
+            { t: "V", n: "Visa Inc.", s: "Financials", d: "Global payments and card network." },
+            { t: "ORCL", n: "Oracle Corp.", s: "Technology", d: "Cloud databases, enterprise software." },
+            { t: "XOM", n: "Exxon Mobil Corp.", s: "Energy", d: "Integrated oil and gas." },
+            { t: "MA", n: "Mastercard Inc.", s: "Financials", d: "Global card payment processing." },
+            { t: "JNJ", n: "Johnson & Johnson", s: "Healthcare", d: "Pharmaceuticals and medical devices." },
+            { t: "COST", n: "Costco Wholesale", s: "Consumer Staples", d: "Membership warehouse retail." },
+            { t: "HD", n: "Home Depot Inc.", s: "Consumer Disc.", d: "Home improvement retail." },
+            { t: "NFLX", n: "Netflix Inc.", s: "Communication", d: "Streaming entertainment." },
+            { t: "BAC", n: "Bank of America", s: "Financials", d: "Major U.S. retail and investment bank." },
+            { t: "ABBV", n: "AbbVie Inc.", s: "Healthcare", d: "Humira, Skyrizi, oncology drugs." },
+            { t: "AMD", n: "Advanced Micro Devices", s: "Technology", d: "CPUs, GPUs, AI chips." },
+            { t: "MU", n: "Micron Technology", s: "Technology", d: "Memory and storage semiconductors." },
+            { t: "GE", n: "GE Aerospace", s: "Industrials", d: "Jet engines and aviation systems." },
+            { t: "PG", n: "Procter & Gamble", s: "Consumer Staples", d: "Tide, Pampers, Gillette brands." },
+            { t: "CVX", n: "Chevron Corp.", s: "Energy", d: "Integrated oil and gas." },
+            { t: "WFC", n: "Wells Fargo & Co.", s: "Financials", d: "U.S. retail and commercial banking." },
+            { t: "UNH", n: "UnitedHealth Group", s: "Healthcare", d: "Managed healthcare and insurance." },
+            { t: "CSCO", n: "Cisco Systems", s: "Technology", d: "Networking hardware and software." },
+            { t: "KO", n: "Coca-Cola Co.", s: "Consumer Staples", d: "Beverages sold in 200+ countries." },
+            { t: "MS", n: "Morgan Stanley", s: "Financials", d: "Investment banking and wealth mgmt." },
+            { t: "CAT", n: "Caterpillar Inc.", s: "Industrials", d: "Construction and mining equipment." },
+            { t: "GS", n: "Goldman Sachs", s: "Financials", d: "Investment banking and securities." },
+            { t: "IBM", n: "IBM Corp.", s: "Technology", d: "Hybrid cloud and AI services." },
+            { t: "MRK", n: "Merck & Co.", s: "Healthcare", d: "Keytruda cancer drug, vaccines." },
+            { t: "AXP", n: "American Express", s: "Financials", d: "Premium credit cards and travel." },
+            { t: "RTX", n: "RTX Corp.", s: "Industrials", d: "Aerospace, defense, Pratt & Whitney." },
+            { t: "PM", n: "Philip Morris Intl.", s: "Consumer Staples", d: "IQOS heated tobacco, cigarettes." },
+            { t: "CRM", n: "Salesforce Inc.", s: "Technology", d: "CRM software and cloud apps." },
+            { t: "TMUS", n: "T-Mobile US", s: "Communication", d: "Wireless telecom services." },
+            { t: "TMO", n: "Thermo Fisher Scientific", s: "Healthcare", d: "Lab instruments and life sciences." },
+            { t: "C", n: "Citigroup Inc.", s: "Financials", d: "Global banking and financial services." },
+            { t: "MCD", n: "McDonald's Corp.", s: "Consumer Disc.", d: "Global fast food franchise." },
+            { t: "ABT", n: "Abbott Laboratories", s: "Healthcare", d: "Medical devices and diagnostics." },
+            { t: "AMAT", n: "Applied Materials", s: "Technology", d: "Semiconductor manufacturing equipment." },
+            { t: "ISRG", n: "Intuitive Surgical", s: "Healthcare", d: "da Vinci robotic surgery systems." },
+            { t: "LIN", n: "Linde plc", s: "Basic Materials", d: "Industrial gases and engineering." },
+            { t: "DIS", n: "Walt Disney Co.", s: "Communication", d: "Parks, Disney+, ESPN, studios." },
+            { t: "BX", n: "Blackstone Inc.", s: "Financials", d: "Alternative asset management." },
+            { t: "PEP", n: "PepsiCo Inc.", s: "Consumer Staples", d: "Pepsi, Lay's, Gatorade brands." },
+            { t: "INTC", n: "Intel Corp.", s: "Technology", d: "CPUs, chipmaking, foundry services." },
+            { t: "QCOM", n: "Qualcomm Inc.", s: "Technology", d: "Mobile chips, Snapdragon, licensing." },
+            { t: "SCHW", n: "Charles Schwab", s: "Financials", d: "Online brokerage and wealth mgmt." },
+            { t: "BA", n: "Boeing Co.", s: "Industrials", d: "Commercial and defense aircraft." },
+            { t: "AMGN", n: "Amgen Inc.", s: "Healthcare", d: "Biologic medicines, Repatha." },
+            { t: "INTU", n: "Intuit Inc.", s: "Technology", d: "TurboTax, QuickBooks, Credit Karma." },
+            { t: "UBER", n: "Uber Technologies", s: "Technology", d: "Ride-hailing and food delivery." },
+            { t: "BKNG", n: "Booking Holdings", s: "Consumer Disc.", d: "Online travel Booking.com, Priceline." },
+            { t: "TJX", n: "TJX Companies", s: "Consumer Disc.", d: "TJ Maxx, Marshalls off-price retail." },
+            { t: "VZ", n: "Verizon Communications", s: "Communication", d: "U.S. wireless and broadband." },
+            { t: "NEE", n: "NextEra Energy", s: "Utilities", d: "Largest U.S. electric utility." },
+            { t: "BLK", n: "BlackRock Inc.", s: "Financials", d: "World's largest asset manager." },
+            { t: "TXN", n: "Texas Instruments", s: "Technology", d: "Analog and embedded chips." },
+            { t: "ACN", n: "Accenture plc", s: "Technology", d: "IT consulting and outsourcing." },
+            { t: "COF", n: "Capital One Financial", s: "Financials", d: "Credit cards and consumer banking." },
+            { t: "NOW", n: "ServiceNow Inc.", s: "Technology", d: "Enterprise IT workflow automation." },
+            { t: "GILD", n: "Gilead Sciences", s: "Healthcare", d: "HIV, hepatitis antivirals." },
+            { t: "PFE", n: "Pfizer Inc.", s: "Healthcare", d: "Vaccines, oncology, Paxlovid." },
+            { t: "ADBE", n: "Adobe Inc.", s: "Technology", d: "Photoshop, Acrobat, Creative Cloud." },
+            { t: "BSX", n: "Boston Scientific", s: "Healthcare", d: "Cardiovascular and endoscopy devices." },
+            { t: "LOW", n: "Lowe's Companies", s: "Consumer Disc.", d: "Home improvement retail." },
+            { t: "UNP", n: "Union Pacific Corp.", s: "Industrials", d: "Major U.S. freight railroad." },
+            { t: "HON", n: "Honeywell Intl.", s: "Industrials", d: "Aerospace, building tech, safety." },
+            { t: "SBUX", n: "Starbucks Corp.", s: "Consumer Disc.", d: "Global coffee retail chain." },
+            { t: "DE", n: "Deere & Co.", s: "Industrials", d: "John Deere agricultural equipment." },
+            { t: "SPGI", n: "S&P Global Inc.", s: "Financials", d: "Credit ratings and market data." },
+            { t: "BMY", n: "Bristol-Myers Squibb", s: "Healthcare", d: "Oncology and cardiovascular drugs." },
+            { t: "MMM", n: "3M Co.", s: "Industrials", d: "Post-it, Scotch tape, industrial goods." },
+            { t: "LMT", n: "Lockheed Martin", s: "Industrials", d: "F-35 jets, missiles, defense." },
+            { t: "SYK", n: "Stryker Corp.", s: "Healthcare", d: "Orthopedic implants and instruments." },
+            { t: "REGN", n: "Regeneron Pharmaceuticals", s: "Healthcare", d: "Eylea, Dupixent biologic drugs." },
+            { t: "GD", n: "General Dynamics", s: "Industrials", d: "Defense, Gulfstream jets." },
+            { t: "TGT", n: "Target Corp.", s: "Consumer Disc.", d: "U.S. discount retail stores." },
+            { t: "CME", n: "CME Group", s: "Financials", d: "Global derivatives marketplace." },
+            { t: "ADP", n: "ADP Inc.", s: "Technology", d: "Payroll and HR solutions." },
+            { t: "MDLZ", n: "Mondelez Intl.", s: "Consumer Staples", d: "Oreo, Cadbury, Ritz snacks." },
+            { t: "NKE", n: "Nike Inc.", s: "Consumer Disc.", d: "Footwear, apparel, sports gear." },
+            { t: "CL", n: "Colgate-Palmolive", s: "Consumer Staples", d: "Toothpaste, soap, pet food." },
+            { t: "UPS", n: "United Parcel Service", s: "Industrials", d: "Package delivery and logistics." },
+            { t: "PLD", n: "Prologis Inc.", s: "Real Estate", d: "Industrial REIT, warehouses." },
+            { t: "FDX", n: "FedEx Corp.", s: "Industrials", d: "Express delivery and freight." },
+            { t: "SO", n: "Southern Co.", s: "Utilities", d: "Electric and gas utility." },
+            { t: "MO", n: "Altria Group", s: "Consumer Staples", d: "Marlboro cigarettes, smokeless tobacco." },
+            { t: "DUK", n: "Duke Energy", s: "Utilities", d: "Electric and natural gas utility." },
+            { t: "EMR", n: "Emerson Electric", s: "Industrials", d: "Automation and process control." },
+            { t: "PANW", n: "Palo Alto Networks", s: "Technology", d: "Cybersecurity platforms." },
+            { t: "SLB", n: "SLB (Schlumberger)", s: "Energy", d: "Oilfield services and technology." },
+            { t: "KLAC", n: "KLA Corp.", s: "Technology", d: "Semiconductor process control." },
+            { t: "OXY", n: "Occidental Petroleum", s: "Energy", d: "Oil and gas exploration." }
+        ];
+
+        // --- Dual-storage layer ---
+        // Uses window.storage (Claude artifact API) when available,
+        // falls back to localStorage so the file works as a standalone HTML.
+        const useCloudStorage = typeof window.storage !== 'undefined';
+
+        async function storageGet(key) {
+            if (useCloudStorage) {
+                try {
+                    const result = await window.storage.get(key);
+                    return result ? result.value : null;
+                } catch(e) { return null; }
+            } else {
+                return localStorage.getItem(key);
+            }
+        }
+
+        async function storageSet(key, value) {
+            if (useCloudStorage) {
+                try { await window.storage.set(key, value); } catch(e) { console.error('Cloud save failed:', e); }
+            } else {
+                try { localStorage.setItem(key, value); } catch(e) { console.error('localStorage save failed:', e); }
+            }
+        }
+        // --- End storage layer ---
+
+        async function login() {
+            const inputName = document.getElementById('codename').value.trim().toUpperCase();
+            if (!inputName) return;
+
+            currentUser = inputName;
+
+            // Load portfolio keyed by codename — works in both Claude and standalone browser
+            const saved = await storageGet(`portfolio_${currentUser}`);
+            userData = saved ? JSON.parse(saved) : { cash: 100000, holdings: {} };
+
+            document.getElementById('display-name').innerText = `SESSION: ${currentUser}`;
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+
+            populateTickerDropdown();
+
+            // Wait for price sync before doing the first UI draw
+            await performDailyPriceSync();
+
+            updateUI();
+            renderList(sp100Data);
+            loadStock('AAPL');
+        }
+
+        async function savePortfolio() {
+            await storageSet(`portfolio_${currentUser}`, JSON.stringify(userData));
+        }
+
+        function populateTickerDropdown() {
+            const select = document.getElementById('ticker-select');
+            select.innerHTML = sp100Data.map(s => `<option value="${s.t}">${s.t} - ${s.n}</option>`).join('');
+        }
+
+        // Base prices sourced April 11, 2026
+        const BASE_PRICES = {
+            "AAPL":200,"MSFT":372,"NVDA":188,"GOOGL":154,"AMZN":182,
+            "AVGO":178,"META":520,"TSLA":240,"BRK.B":505,"LLY":938,
+            "WMT":93,"JPM":228,"V":330,"ORCL":155,"XOM":108,
+            "MA":530,"JNJ":152,"COST":960,"HD":345,"NFLX":985,
+            "BAC":36,"ABBV":185,"AMD":92,"MU":88,"GE":196,
+            "PG":163,"CVX":148,"WFC":66,"UNH":480,"CSCO":60,
+            "KO":69,"MS":120,"CAT":295,"GS":575,"IBM":240,
+            "MRK":85,"AXP":255,"RTX":134,"PM":160,"CRM":265,
+            "TMUS":230,"TMO":430,"C":68,"MCD":278,"ABT":120,
+            "AMAT":145,"ISRG":540,"LIN":460,"DIS":111,"BX":140,
+            "PEP":145,"INTC":19,"QCOM":142,"SCHW":72,"BA":175,
+            "AMGN":295,"INTU":575,"UBER":72,"BKNG":4900,"TJX":120,
+            "VZ":41,"NEE":70,"BLK":945,"TXN":155,"ACN":320,
+            "COF":170,"NOW":850,"GILD":115,"PFE":26,"ADBE":375,
+            "BSX":95,"LOW":220,"UNP":215,"HON":205,"SBUX":88,
+            "DE":430,"SPGI":455,"BMY":50,"MMM":125,"LMT":435,
+            "SYK":355,"REGN":670,"GD":240,"TGT":95,"CME":225,
+            "ADP":265,"MDLZ":67,"NKE":72,"CL":92,"UPS":92,
+            "PLD":105,"FDX":240,"SO":84,"MO":55,"DUK":118,
+            "EMR":115,"PANW":175,"SLB":38,"KLAC":680,"OXY":46
+        };
+
+        // Seeded pseudo-random: same date always gives same prices
+        function seededRand(seed) {
+            let x = Math.sin(seed + 1) * 10000;
+            return x - Math.floor(x);
+        }
+        function getDaysSinceEpoch(dateStr) {
+            return Math.floor(new Date(dateStr).getTime() / 86400000);
+        }
+        function simulatePriceForDate(ticker, dateStr) {
+            const base = BASE_PRICES[ticker] || 100;
+            const day = getDaysSinceEpoch(dateStr);
+            // Daily drift: small % move seeded by ticker+date
+            let price = base;
+            const tickerSeed = ticker.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
+            // Walk forward from a fixed start date so prices compound naturally
+            const startDay = getDaysSinceEpoch('2024-01-01');
+            for (let d = startDay; d <= day; d++) {
+                const r = seededRand(d * 1000 + tickerSeed);
+                const move = (r - 0.48) * 0.025; // ~±1.25% daily, slight upward bias
+                price = price * (1 + move);
+            }
+            return Math.round(price * 100) / 100;
+        }
+        function simulateHistory(ticker, days = 365) {
+            const history = [];
+            const today = new Date();
+            for (let i = days; i >= 0; i--) {
+                const d = new Date(today);
+                d.setDate(today.getDate() - i);
+                if (d.getDay() === 0 || d.getDay() === 6) continue;
+                const dateStr = d.toISOString().split('T')[0];
+                history.push({ date: d.toLocaleDateString(), price: simulatePriceForDate(ticker, dateStr) });
+            }
+            return history;
+        }
+
+        async function performDailyPriceSync() {
+            document.getElementById('sync-status').innerText = "SYNCING MARKET...";
+            document.getElementById('sync-status').classList.add('sync-pulse');
+
+            const today = new Date();
+            const dateStr = today.toISOString().split('T')[0];
+            const cacheKey = `market_batch_v3_${dateStr}`;
+
+            const cachedData = localStorage.getItem(cacheKey);
+            if (cachedData) {
+                batchPrices = JSON.parse(cachedData);
+                finalizeSync(dateStr);
+                return;
+            }
+
+            batchPrices = {};
+            const tickers = sp100Data.map(s => s.t);
+
+            // Try live Yahoo Finance first (works when run locally in browser)
+            try {
+                const symbols = tickers.join(',');
+                const resp = await Promise.race([
+                    fetch(`https://corsproxy.io/?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}&fields=regularMarketPrice`)}`),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
+                ]);
+                const data = await resp.json();
+                const quotes = data?.quoteResponse?.result || [];
+                quotes.forEach(q => { if (q.regularMarketPrice) batchPrices[q.symbol] = q.regularMarketPrice; });
+            } catch(e) {
+                console.log('Live prices unavailable, using simulated prices');
+            }
+
+            // Fill any missing tickers with simulated prices (always works)
+            tickers.forEach(ticker => {
+                if (!batchPrices[ticker]) {
+                    batchPrices[ticker] = simulatePriceForDate(ticker, dateStr);
+                }
+            });
+
+            localStorage.setItem(cacheKey, JSON.stringify(batchPrices));
+            finalizeSync(dateStr);
+        }
+
+        function finalizeSync(dateStr) {
+            document.getElementById('sync-status').innerText = "DATA PERSISTED";
+            document.getElementById('sync-date-label').innerText = `Displaying Batch Data from ${dateStr}`;
+            document.getElementById('effective-date-val').innerText = dateStr;
+            setTimeout(() => document.getElementById('sync-status').classList.remove('sync-pulse'), 2000);
+        }
+
+        async function loadStock(ticker) {
+            if (!ticker) return;
+            document.getElementById('ticker-select').value = ticker;
+
+            const cacheKey = `history_${ticker}`;
+            let history = JSON.parse(localStorage.getItem(cacheKey));
+
+            if (!history) {
+                // Try live data first
+                try {
+                    const toTs = Math.floor(Date.now() / 1000);
+                    const fromTs = toTs - 365 * 24 * 3600;
+                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&period1=${fromTs}&period2=${toTs}`;
+                    const resp = await Promise.race([
+                        fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`),
+                        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
+                    ]);
+                    const data = await resp.json();
+                    const result = data?.chart?.result?.[0];
+                    if (result) {
+                        const timestamps = result.timestamp;
+                        const closes = result.indicators.quote[0].close;
+                        history = timestamps.map((t, i) => ({
+                            date: new Date(t * 1000).toLocaleDateString(),
+                            price: closes[i]
+                        })).filter(h => h.price != null);
+                        localStorage.setItem(cacheKey, JSON.stringify(history));
+                    }
+                } catch (e) { /* fall through to simulated */ }
+
+                // Fall back to simulated history (always works)
+                if (!history) {
+                    history = simulateHistory(ticker, 365);
+                    localStorage.setItem(cacheKey, JSON.stringify(history));
+                }
+            }
+
+            if (history && history.length) {
+                const prices = history.map(h => h.price);
+                activeStock = { ticker, dates: history.map(h => h.date), prices, sma50: calculateSMA(prices, 50), sma200: calculateSMA(prices, 200) };
+                document.getElementById('trade-ticker-label').innerText = ticker;
+                const displayPrice = batchPrices[ticker] || prices.slice(-1)[0] || 0;
+                document.getElementById('current-price').innerText = '$' + displayPrice.toLocaleString(undefined, {minimumFractionDigits: 2});
+                updateTrendRange('1Y');
+                updateUI();
+            }
+        }
+
+        function calculateSMA(data, period) {
+            return data.map((_, i) => i < period - 1 ? null : data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period);
+        }
+
+        async function executeTrade(type) {
+            const qty = parseInt(document.getElementById('trade-qty').value) || 0;
+            const price = batchPrices[activeStock.ticker] || (activeStock.prices.length ? activeStock.prices.slice(-1)[0] : 0);
+            
+            if (qty <= 0 || price <= 0) return;
+
+            if (!userData.holdings[activeStock.ticker]) userData.holdings[activeStock.ticker] = { qty: 0, avgPrice: 0 };
+            const h = userData.holdings[activeStock.ticker];
+
+            if (type === 'BUY' && userData.cash >= qty * price) {
+                const totalCost = (h.qty * h.avgPrice) + (qty * price);
+                userData.cash -= qty * price;
+                h.qty += qty;
+                h.avgPrice = totalCost / h.qty;
+            } else if (type === 'SELL' && h.qty >= qty) {
+                userData.cash += qty * price;
+                h.qty -= qty;
+                if (h.qty === 0) delete userData.holdings[activeStock.ticker];
+            }
+            
+            // Save portfolio persistently across sessions
+            await savePortfolio();
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('cash-balance').innerText = '$' + userData.cash.toLocaleString(undefined, {minimumFractionDigits: 2});
+            let totalPortfolioVal = 0;
+            const list = document.getElementById('holdings-list');
+            list.innerHTML = "";
+
+            Object.entries(userData.holdings).forEach(([t, data]) => {
+                const currentPrice = batchPrices[t] || 0;
+                const currentVal = data.qty * currentPrice;
+                const costBasis = data.qty * data.avgPrice;
+                const change = currentVal - costBasis;
+                totalPortfolioVal += currentVal;
+
+                list.innerHTML += `
+                    <tr onclick="loadStock('${t}'); switchTab('trade')" class="cursor-pointer hover:bg-slate-800 transition">
+                        <td class="py-3">
+                            <div class="font-black text-blue-400">${t}</div>
+                            <div class="text-[8px] text-slate-500 uppercase">${data.qty} SHARES</div>
+                        </td>
+                        <td class="py-3 text-right font-bold">$${currentVal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td class="py-3 text-right font-bold ${change >= 0 ? 'text-green-400' : 'text-red-400'}">
+                            ${change >= 0 ? '+' : ''}${change.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        </td>
+                    </tr>`;
+            });
+
+            document.getElementById('stock-valuation').innerText = '$' + totalPortfolioVal.toLocaleString(undefined, {minimumFractionDigits: 2});
+            document.getElementById('net-worth').innerText = '$' + (userData.cash + totalPortfolioVal).toLocaleString(undefined, {minimumFractionDigits: 2});
+        }
+
+        function renderList(data) {
+            document.getElementById('sp500-table-body').innerHTML = data.map(s => {
+                const price = batchPrices[s.t];
+                const lastPrice = price ? "$" + price.toLocaleString(undefined, {minimumFractionDigits: 2}) : "SYNCING...";
+
+                return `
+                <tr class="border-b border-slate-800 hover:bg-slate-800/30">
+                    <td class="p-3 font-black text-blue-400">${s.t}</td>
+                    <td class="p-3 text-slate-300 font-medium">${s.n}</td>
+                    <td class="p-3 text-slate-500 font-bold text-[10px] uppercase">${s.s}</td>
+                    <td class="p-3 text-slate-400 italic text-[10px] leading-tight w-1/3">${s.d}</td>
+                    <td class="p-3 text-right font-mono font-bold">${lastPrice}</td>
+                    <td class="p-3 text-right"><button onclick="loadStock('${s.t}'); switchTab('trade')" class="text-blue-500 font-black text-[10px] hover:underline uppercase">Trade</button></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function updateTrendRange(range, btn) {
+            if (btn) { document.querySelectorAll('.btn-range').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+            const count = { '30D': 30, '6M': 126, '1Y': 252, '2Y': 504 }[range] || 252;
+            renderChart(activeStock.dates.slice(-count), activeStock.prices.slice(-count), activeStock.sma50.slice(-count), activeStock.sma200.slice(-count));
+        }
+
+        function renderChart(labels, p, s50, s200) {
+            const ctx = document.getElementById('stockChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Price', data: p, borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, fill: true, backgroundColor: 'rgba(59, 130, 246, 0.05)' },
+                        { label: '50 SMA', data: s50, borderColor: '#fbbf24', borderWidth: 1, pointRadius: 0 },
+                        { label: '200 SMA', data: s200, borderColor: '#ef4444', borderWidth: 1, pointRadius: 0 }
+                    ]
+                },
+                options: { 
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: true, labels: { color: '#94a3b8', font: { size: 10, weight: '800' } } } },
+                    scales: { 
+                        x: { ticks: { color: '#475569', maxTicksLimit: 8 }, grid: { display: false } }, 
+                        y: { grid: { color: '#1e293b' }, ticks: { color: '#475569' } } 
+                    }
+                }
+            });
+        }
+
+        function switchTab(tab) {
+            document.getElementById('section-trade').classList.toggle('hidden', tab !== 'trade');
+            document.getElementById('section-list').classList.toggle('hidden', tab !== 'list');
+            document.getElementById('tab-trade').classList.toggle('tab-active', tab === 'trade');
+            document.getElementById('tab-list').classList.toggle('tab-active', tab === 'list');
+            if (tab === 'list') renderList(sp100Data);
+        }
+
+        function filterDirectory() {
+            const query = document.getElementById('directory-search').value.toUpperCase();
+            renderList(sp100Data.filter(s => s.t.includes(query) || s.n.toUpperCase().includes(query)));
+        }
+    </script>
+</body>
+</html>
