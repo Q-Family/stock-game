@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>S&P 100 | Smart-Sync Terminal v4</title>
+    <title>S&P 100 | Smart-Sync Terminal v5</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -19,716 +19,755 @@
         .sync-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; color: #3b82f6; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
         select { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1em; }
-        #cloud-banner { display: none; position: fixed; bottom: 1rem; right: 1rem; z-index: 100; padding: 10px 16px; border-radius: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; }
-        #cloud-banner.saving  { display: block; background: #1e3a5f; color: #60a5fa; border: 1px solid #2563eb44; }
-        #cloud-banner.saved   { display: block; background: #14532d; color: #4ade80; border: 1px solid #16a34a44; }
-        #cloud-banner.error   { display: block; background: #450a0a; color: #f87171; border: 1px solid #dc262644; }
-        #cloud-banner.offline { display: block; background: #431407; color: #fb923c; border: 1px solid #ea580c44; }
+
+        /* Save banner — fixed bottom-right */
+        #save-banner {
+            position: fixed; bottom: 1.25rem; right: 1.25rem; z-index: 999;
+            padding: 10px 18px; border-radius: 8px;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+            transition: opacity 0.4s ease;
+            pointer-events: none;
+        }
+        #save-banner.saving  { background:#1e3a5f; color:#60a5fa; border:1px solid #2563eb55; opacity:1; }
+        #save-banner.saved   { background:#14532d; color:#4ade80; border:1px solid #16a34a55; opacity:1; }
+        #save-banner.error   { background:#450a0a; color:#f87171; border:1px solid #dc262655; opacity:1; }
+        #save-banner.hide    { opacity:0; }
     </style>
 </head>
 <body>
 
-    <!-- Cloud save status banner -->
-    <div id="cloud-banner"></div>
+<div id="save-banner" class="hide"></div>
 
-    <div id="login-screen" class="min-h-screen flex items-center justify-center px-4">
-        <div class="card p-8 w-full max-w-md text-center shadow-2xl border-blue-500/30">
-            <h1 class="text-3xl font-black text-blue-400 mb-2 tracking-tighter uppercase">Market Insight</h1>
-            <p class="text-slate-400 mb-1 text-sm italic">Secure Portfolio Terminal</p>
-            <p class="text-slate-600 mb-6 text-[10px] uppercase tracking-widest">v4 · Cloud Sync</p>
-            <input type="text" id="codename" placeholder="ENTER CODENAME"
-                   oninput="this.value = this.value.toUpperCase()"
-                   onkeydown="if(event.key==='Enter') login()"
-                   class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg mb-2 text-center text-lg font-bold text-blue-400 outline-none uppercase focus:border-blue-500">
-            <p id="login-error" class="text-red-400 text-xs mb-3 hidden">Could not connect to cloud. Check your connection and try again.</p>
-            <button onclick="login()" id="login-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition uppercase tracking-widest">Access Terminal</button>
-            <p class="text-slate-700 text-[9px] mt-4 uppercase tracking-widest">Portfolios saved to cloud · Any device · Any browser</p>
-        </div>
+<!-- LOGIN -->
+<div id="login-screen" class="min-h-screen flex items-center justify-center px-4">
+    <div class="card p-8 w-full max-w-md text-center shadow-2xl border-blue-500/30">
+        <h1 class="text-3xl font-black text-blue-400 mb-2 tracking-tighter uppercase">Market Insight</h1>
+        <p class="text-slate-400 mb-1 text-sm italic">Secure Portfolio Terminal</p>
+        <p class="text-slate-600 mb-6 text-[10px] uppercase tracking-widest">v5 · Cloud Sync</p>
+        <input type="text" id="codename" placeholder="ENTER CODENAME"
+               oninput="this.value = this.value.toUpperCase()"
+               onkeydown="if(event.key==='Enter') login()"
+               class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg mb-2 text-center text-lg font-bold text-blue-400 outline-none uppercase focus:border-blue-500">
+        <p id="login-msg" class="text-xs mb-3 h-4"></p>
+        <button onclick="login()" id="login-btn"
+                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition uppercase tracking-widest">
+            Access Terminal
+        </button>
+        <p class="text-slate-700 text-[9px] mt-4 uppercase tracking-widest">Portfolio saved to cloud · Any device · Any browser</p>
     </div>
+</div>
 
-    <div id="dashboard" class="hidden min-h-screen flex flex-col">
-        <header class="p-4 bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
-            <div class="max-w-7xl mx-auto flex justify-between items-center">
-                <nav class="flex space-x-8">
-                    <button onclick="switchTab('trade')" id="tab-trade" class="pb-1 text-xs font-black tab-active uppercase">Trade Desk</button>
-                    <button onclick="switchTab('list')" id="tab-list" class="pb-1 text-xs font-black text-slate-500 hover:text-white uppercase transition">Company Directory</button>
-                    <span class="text-[9px] font-bold text-slate-600 self-end pb-1">v4</span>
-                </nav>
-                <div class="flex items-center gap-4">
-                    <div id="sync-status" class="text-[9px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-500 uppercase tracking-tighter">OFFLINE</div>
-                    <span id="display-name" class="text-blue-500 font-black text-[10px] tracking-widest uppercase"></span>
-                    <button onclick="location.reload()" class="text-[10px] font-black text-red-500 border border-red-500/20 px-2 py-1 rounded">LOGOUT</button>
-                </div>
+<!-- DASHBOARD -->
+<div id="dashboard" class="hidden min-h-screen flex flex-col">
+    <header class="p-4 bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <nav class="flex space-x-8 items-end">
+                <button onclick="switchTab('trade')" id="tab-trade" class="pb-1 text-xs font-black tab-active uppercase">Trade Desk</button>
+                <button onclick="switchTab('list')"  id="tab-list"  class="pb-1 text-xs font-black text-slate-500 hover:text-white uppercase transition">Company Directory</button>
+                <span class="text-[9px] font-bold text-slate-600 pb-1">v5</span>
+            </nav>
+            <div class="flex items-center gap-4">
+                <div id="sync-status" class="text-[9px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-500 uppercase tracking-tighter">OFFLINE</div>
+                <span id="display-name" class="text-blue-500 font-black text-[10px] tracking-widest uppercase"></span>
+                <button onclick="location.reload()" class="text-[10px] font-black text-red-500 border border-red-500/20 px-2 py-1 rounded">LOGOUT</button>
             </div>
-        </header>
+        </div>
+    </header>
 
-        <main class="max-w-7xl mx-auto p-4 lg:p-6 w-full flex-1">
-            <div id="section-trade" class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                <div class="lg:col-span-1 space-y-6">
-                    <div class="card p-6 bg-slate-900 border-blue-500/20">
-                        <p class="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Net Worth</p>
-                        <p class="text-2xl font-black text-green-400" id="net-worth">$0.00</p>
-                        <div class="mt-4 space-y-2 border-t border-slate-800 pt-4 text-[10px] font-bold uppercase">
-                            <div class="flex justify-between"><span class="text-slate-500">Cash</span><span id="cash-balance" class="text-white"></span></div>
-                            <div class="flex justify-between"><span class="text-slate-500">Portfolio</span><span id="stock-valuation" class="text-white"></span></div>
-                        </div>
-                    </div>
-                    <div class="card p-4 overflow-hidden">
-                        <h3 class="text-[10px] font-black text-slate-500 uppercase mb-4 border-b border-slate-700 pb-2">Active Holdings</h3>
-                        <table class="w-full text-left text-[10px]">
-                            <thead class="text-slate-500 font-black uppercase border-b border-slate-800">
-                                <tr>
-                                    <th class="pb-2">Asset</th>
-                                    <th class="pb-2 text-right">Value</th>
-                                    <th class="pb-2 text-right">+/-</th>
-                                </tr>
-                            </thead>
-                            <tbody id="holdings-list" class="divide-y divide-slate-800"></tbody>
-                        </table>
+    <main class="max-w-7xl mx-auto p-4 lg:p-6 w-full flex-1">
+
+        <!-- TRADE TAB -->
+        <div id="section-trade" class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div class="lg:col-span-1 space-y-6">
+                <div class="card p-6 bg-slate-900 border-blue-500/20">
+                    <p class="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Net Worth</p>
+                    <p class="text-2xl font-black text-green-400" id="net-worth">$0.00</p>
+                    <div class="mt-4 space-y-2 border-t border-slate-800 pt-4 text-[10px] font-bold uppercase">
+                        <div class="flex justify-between"><span class="text-slate-500">Cash</span><span id="cash-balance" class="text-white"></span></div>
+                        <div class="flex justify-between"><span class="text-slate-500">Portfolio</span><span id="stock-valuation" class="text-white"></span></div>
                     </div>
                 </div>
-
-                <div class="lg:col-span-3 card p-6">
-                    <div class="flex flex-col md:flex-row justify-between mb-6 gap-4">
-                        <div class="flex flex-col gap-1 w-full md:w-64">
-                            <label class="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Select Asset</label>
-                            <select id="ticker-select" onchange="loadStock(this.value)" class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 font-black uppercase text-blue-400 text-sm outline-none focus:border-blue-500 cursor-pointer">
-                            </select>
-                        </div>
-                        <div class="flex items-end gap-4">
-                            <div class="hidden md:block text-right">
-                                <p class="text-[8px] font-black text-slate-500 uppercase tracking-widest">Price Effective Date</p>
-                                <p id="effective-date-val" class="text-[10px] font-bold text-blue-400">---</p>
-                            </div>
-                            <div class="flex bg-slate-900 p-1 rounded-lg border border-slate-700 h-10">
-                                <button onclick="updateTrendRange('30D', this)" class="btn-range">30D</button>
-                                <button onclick="updateTrendRange('6M', this)" class="btn-range">6M</button>
-                                <button onclick="updateTrendRange('1Y', this)" class="btn-range active">1Y</button>
-                                <button onclick="updateTrendRange('2Y', this)" class="btn-range">2Y</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="h-80 w-full mb-6"><canvas id="stockChart"></canvas></div>
-                    <div class="bg-slate-900 p-6 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div class="text-center md:text-left">
-                            <p id="trade-ticker-label" class="text-[10px] text-slate-500 font-black uppercase tracking-widest">Ready</p>
-                            <p id="current-price" class="text-4xl font-black text-white">$0.00</p>
-                        </div>
-                        <div class="flex gap-2">
-                            <input type="number" id="trade-qty" placeholder="QTY" min="1"
-                                   class="w-20 bg-slate-800 border border-slate-600 rounded-lg py-3 text-center font-bold text-white">
-                            <button onclick="executeTrade('BUY')" class="bg-green-600 px-6 py-3 rounded-lg font-black hover:bg-green-500 transition">BUY</button>
-                            <button onclick="executeTrade('SELL')" class="bg-red-600 px-6 py-3 rounded-lg font-black hover:bg-red-500 transition">SELL</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="section-list" class="hidden card p-6">
-                <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
-                    <div>
-                        <h2 class="text-xl font-black uppercase tracking-tighter text-blue-400">Market Directory</h2>
-                        <p id="sync-date-label" class="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Checking data freshness...</p>
-                    </div>
-                    <input type="text" id="directory-search" onkeyup="filterDirectory()" placeholder="SEARCH DIRECTORY..."
-                           class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 w-full md:w-80 text-xs font-bold text-blue-400 uppercase outline-none focus:border-blue-500">
-                </div>
-                <div class="overflow-x-auto max-h-[600px]">
-                    <table class="w-full text-left text-xs">
-                        <thead class="sticky top-0 bg-slate-800 z-10">
-                            <tr class="text-slate-400 text-[10px] uppercase font-black border-b border-slate-700">
-                                <th class="p-3">Ticker</th>
-                                <th class="p-3">Company</th>
-                                <th class="p-3">Sector</th>
-                                <th class="p-3">Profile</th>
-                                <th class="p-3 text-right">Last Close</th>
-                                <th class="p-3"></th>
-                            </tr>
+                <div class="card p-4 overflow-hidden">
+                    <h3 class="text-[10px] font-black text-slate-500 uppercase mb-4 border-b border-slate-700 pb-2">Active Holdings</h3>
+                    <table class="w-full text-left text-[10px]">
+                        <thead class="text-slate-500 font-black uppercase border-b border-slate-800">
+                            <tr><th class="pb-2">Asset</th><th class="pb-2 text-right">Value</th><th class="pb-2 text-right">+/-</th></tr>
                         </thead>
-                        <tbody id="sp500-table-body"></tbody>
+                        <tbody id="holdings-list" class="divide-y divide-slate-800"></tbody>
                     </table>
                 </div>
             </div>
-        </main>
-    </div>
 
-    <script>
-        // =============================================================
-        //  JSONBIN CLOUD STORAGE
-        //  All portfolios are stored server-side, keyed by codename.
-        //  Works on any device, any browser, anywhere.
-        // =============================================================
-        const JSONBIN_API_KEY = '$2a$10$jvW3J3Oaj9M3QgycxWwpIefnVI6tdZpDGXxUz6o9vAo92JZV1RTDO';
-        const JSONBIN_BASE    = 'https://api.jsonbin.io/v3';
+            <div class="lg:col-span-3 card p-6">
+                <div class="flex flex-col md:flex-row justify-between mb-6 gap-4">
+                    <div class="flex flex-col gap-1 w-full md:w-64">
+                        <label class="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Select Asset</label>
+                        <select id="ticker-select" onchange="loadStock(this.value)"
+                                class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 font-black uppercase text-blue-400 text-sm outline-none focus:border-blue-500 cursor-pointer"></select>
+                    </div>
+                    <div class="flex items-end gap-4">
+                        <div class="hidden md:block text-right">
+                            <p class="text-[8px] font-black text-slate-500 uppercase tracking-widest">Price Effective Date</p>
+                            <p id="effective-date-val" class="text-[10px] font-bold text-blue-400">---</p>
+                        </div>
+                        <div class="flex bg-slate-900 p-1 rounded-lg border border-slate-700 h-10">
+                            <button onclick="updateTrendRange('30D',this)" class="btn-range">30D</button>
+                            <button onclick="updateTrendRange('6M',this)"  class="btn-range">6M</button>
+                            <button onclick="updateTrendRange('1Y',this)"  class="btn-range active">1Y</button>
+                            <button onclick="updateTrendRange('2Y',this)"  class="btn-range">2Y</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="h-80 w-full mb-6"><canvas id="stockChart"></canvas></div>
+                <div class="bg-slate-900 p-6 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div class="text-center md:text-left">
+                        <p id="trade-ticker-label" class="text-[10px] text-slate-500 font-black uppercase tracking-widest">Ready</p>
+                        <p id="current-price" class="text-4xl font-black text-white">$0.00</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="number" id="trade-qty" placeholder="QTY" min="1"
+                               class="w-20 bg-slate-800 border border-slate-600 rounded-lg py-3 text-center font-bold text-white">
+                        <button onclick="executeTrade('BUY')"  class="bg-green-600 px-6 py-3 rounded-lg font-black hover:bg-green-500 transition">BUY</button>
+                        <button onclick="executeTrade('SELL')" class="bg-red-600   px-6 py-3 rounded-lg font-black hover:bg-red-500   transition">SELL</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-        // In-memory map of codename → JSONBin bin ID, cached in localStorage
-        // so we don't have to search on every page load.
-        function getBinIdCache() {
-            try { return JSON.parse(localStorage.getItem('jb_bin_ids') || '{}'); } catch(e) { return {}; }
+        <!-- DIRECTORY TAB -->
+        <div id="section-list" class="hidden card p-6">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+                <div>
+                    <h2 class="text-xl font-black uppercase tracking-tighter text-blue-400">Market Directory</h2>
+                    <p id="sync-date-label" class="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Checking data freshness...</p>
+                </div>
+                <input type="text" id="directory-search" onkeyup="filterDirectory()" placeholder="SEARCH DIRECTORY..."
+                       class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 w-full md:w-80 text-xs font-bold text-blue-400 uppercase outline-none focus:border-blue-500">
+            </div>
+            <div class="overflow-x-auto max-h-[600px]">
+                <table class="w-full text-left text-xs">
+                    <thead class="sticky top-0 bg-slate-800 z-10">
+                        <tr class="text-slate-400 text-[10px] uppercase font-black border-b border-slate-700">
+                            <th class="p-3">Ticker</th><th class="p-3">Company</th><th class="p-3">Sector</th>
+                            <th class="p-3">Profile</th><th class="p-3 text-right">Last Close</th><th class="p-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="sp500-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+// =================================================================
+//  CONFIG
+// =================================================================
+const JBIN_KEY        = '$2a$10$jvW3J3Oaj9M3QgycxWwpIefnVI6tdZpDGXxUz6o9vAo92JZV1RTDO';
+const JBIN_BASE       = 'https://api.jsonbin.io/v3';
+const COLLECTION_ID   = '69e173be36566621a8c002aa';   // stock-game-portfolios
+
+// =================================================================
+//  JSONBIN HELPERS
+//  Strategy: each student = one bin inside the collection.
+//  Bin name = "portfolio_CODENAME"
+//  We cache codename→binId in localStorage so we only do the
+//  collection-list lookup ONCE per device, then go direct.
+// =================================================================
+
+function localCacheGet(codename) {
+    try { return JSON.parse(localStorage.getItem('jb_ids') || '{}')[codename] || null; }
+    catch(e) { return null; }
+}
+function localCacheSet(codename, binId) {
+    try {
+        const map = JSON.parse(localStorage.getItem('jb_ids') || '{}');
+        map[codename] = binId;
+        localStorage.setItem('jb_ids', JSON.stringify(map));
+    } catch(e) {}
+}
+function localPortfolioSet(codename, data) {
+    try { localStorage.setItem('portfolio_' + codename, JSON.stringify(data)); } catch(e) {}
+}
+function localPortfolioGet(codename) {
+    try {
+        const raw = localStorage.getItem('portfolio_' + codename);
+        return raw ? JSON.parse(raw) : null;
+    } catch(e) { return null; }
+}
+
+// Fetch all bins in our collection and find the one named for this codename.
+// Returns binId string or null.
+async function findBinInCollection(codename) {
+    const targetName = 'portfolio_' + codename;
+    const resp = await fetch(`${JBIN_BASE}/c/${COLLECTION_ID}/bins`, {
+        headers: { 'X-Master-Key': JBIN_KEY }
+    });
+    if (!resp.ok) throw new Error('Collection fetch failed: ' + resp.status);
+    const bins = await resp.json();   // array of { record, snippetMeta, private, createdAt }
+    const match = bins.find(b => b.snippetMeta && b.snippetMeta.name === targetName);
+    return match ? match.record : null;  // match.record = the bin ID
+}
+
+// Read a bin by its ID. Returns parsed portfolio object or null.
+async function readBin(binId) {
+    const resp = await fetch(`${JBIN_BASE}/b/${binId}/latest`, {
+        headers: { 'X-Master-Key': JBIN_KEY }
+    });
+    if (!resp.ok) throw new Error('Read bin failed: ' + resp.status);
+    const data = await resp.json();
+    return data.record || null;
+}
+
+// Create a new bin in the collection. Returns new binId.
+async function createBin(codename, portfolio) {
+    const resp = await fetch(`${JBIN_BASE}/b`, {
+        method: 'POST',
+        headers: {
+            'Content-Type':  'application/json',
+            'X-Master-Key':  JBIN_KEY,
+            'X-Bin-Name':    'portfolio_' + codename,
+            'X-Bin-Private': 'true',
+            'X-Collection-Id': COLLECTION_ID
+        },
+        body: JSON.stringify(portfolio)
+    });
+    if (!resp.ok) throw new Error('Create bin failed: ' + resp.status);
+    const data = await resp.json();
+    return data.metadata.id;
+}
+
+// Update an existing bin by ID.
+async function updateBin(binId, portfolio) {
+    const resp = await fetch(`${JBIN_BASE}/b/${binId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Master-Key': JBIN_KEY
+        },
+        body: JSON.stringify(portfolio)
+    });
+    if (!resp.ok) throw new Error('Update bin failed: ' + resp.status);
+}
+
+// High-level load: find or create bin, return portfolio data.
+async function cloudLoad(codename) {
+    let binId = localCacheGet(codename);
+
+    if (!binId) {
+        // Not cached on this device — search the collection
+        binId = await findBinInCollection(codename);
+        if (binId) localCacheSet(codename, binId);
+    }
+
+    if (binId) {
+        const portfolio = await readBin(binId);
+        if (portfolio) {
+            localPortfolioSet(codename, portfolio);  // mirror locally
+            return portfolio;
         }
-        function setBinIdCache(cache) {
-            try { localStorage.setItem('jb_bin_ids', JSON.stringify(cache)); } catch(e) {}
+    }
+
+    // No existing bin — brand new student
+    return null;
+}
+
+// High-level save: update existing bin or create a new one.
+async function cloudSave(codename, portfolio) {
+    let binId = localCacheGet(codename);
+
+    if (binId) {
+        await updateBin(binId, portfolio);
+    } else {
+        binId = await createBin(codename, portfolio);
+        localCacheSet(codename, binId);
+    }
+    localPortfolioSet(codename, portfolio);  // keep local mirror in sync
+}
+
+// =================================================================
+//  SAVE BANNER
+// =================================================================
+let bannerTimer = null;
+function showBanner(type, msg) {
+    const b = document.getElementById('save-banner');
+    b.textContent = msg;
+    b.className = type;
+    clearTimeout(bannerTimer);
+    if (type === 'saved') {
+        bannerTimer = setTimeout(() => { b.className = 'hide'; }, 2500);
+    }
+}
+
+// =================================================================
+//  DEBOUNCED SAVE  (1 s after last trade)
+// =================================================================
+let saveTimer = null;
+function scheduleSave() {
+    clearTimeout(saveTimer);
+    showBanner('saving', '⟳  SAVING TO CLOUD...');
+    saveTimer = setTimeout(async () => {
+        try {
+            await cloudSave(currentUser, userData);
+            showBanner('saved', '✓  PORTFOLIO SAVED');
+        } catch(e) {
+            console.error('Cloud save error:', e);
+            localPortfolioSet(currentUser, userData);
+            showBanner('error', '⚠  CLOUD SAVE FAILED · DATA KEPT LOCALLY');
         }
+    }, 1000);
+}
 
-        // Find the bin ID for a given codename by searching JSONBin bins by name.
-        async function findBinByCodename(codename) {
-            const cache = getBinIdCache();
-            if (cache[codename]) return cache[codename];
+// =================================================================
+//  APP STATE
+// =================================================================
+let currentUser  = '';
+let userData     = { cash: 100000, holdings: {} };
+let activeStock  = { ticker: '', dates: [], prices: [], sma50: [], sma200: [] };
+let batchPrices  = {};
+let chartInstance = null;
 
-            // Search all bins for one named after this codename
-            const resp = await fetch(`${JSONBIN_BASE}/b?page=1`, {
-                headers: { 'X-Master-Key': JSONBIN_API_KEY }
-            });
-            if (!resp.ok) return null;
-            const data = await resp.json();
-            const bins = data?.result || [];
-            const match = bins.find(b => b.snippetMeta?.name === `portfolio_${codename}`);
-            if (match) {
-                cache[codename] = match.id;
-                setBinIdCache(cache);
-                return match.id;
+// =================================================================
+//  STOCK DATA
+// =================================================================
+const sp100Data = [
+    { t:"AAPL",  n:"Apple Inc.",               s:"Technology",      d:"Consumer electronics, iPhone, Mac, services." },
+    { t:"MSFT",  n:"Microsoft Corp.",           s:"Technology",      d:"Software, Azure cloud, Office 365." },
+    { t:"NVDA",  n:"NVIDIA Corp.",              s:"Technology",      d:"AI chips, GPUs, data center computing." },
+    { t:"GOOGL", n:"Alphabet Inc.",             s:"Communication",   d:"Google Search, YouTube, Google Cloud." },
+    { t:"AMZN",  n:"Amazon.com Inc.",           s:"Consumer Disc.",  d:"E-commerce, AWS cloud, Prime." },
+    { t:"AVGO",  n:"Broadcom Inc.",             s:"Technology",      d:"Semiconductors and infrastructure software." },
+    { t:"META",  n:"Meta Platforms",            s:"Communication",   d:"Facebook, Instagram, WhatsApp." },
+    { t:"TSLA",  n:"Tesla Inc.",                s:"Consumer Disc.",  d:"Electric vehicles and clean energy." },
+    { t:"BRK.B", n:"Berkshire Hathaway",        s:"Financials",      d:"Diversified investment conglomerate." },
+    { t:"LLY",   n:"Eli Lilly & Co.",           s:"Healthcare",      d:"Pharmaceuticals, GLP-1 weight loss drugs." },
+    { t:"WMT",   n:"Walmart Inc.",              s:"Consumer Staples",d:"Retail, grocery, e-commerce." },
+    { t:"JPM",   n:"JPMorgan Chase",            s:"Financials",      d:"Largest U.S. bank by assets." },
+    { t:"V",     n:"Visa Inc.",                 s:"Financials",      d:"Global payments and card network." },
+    { t:"ORCL",  n:"Oracle Corp.",              s:"Technology",      d:"Cloud databases, enterprise software." },
+    { t:"XOM",   n:"Exxon Mobil Corp.",         s:"Energy",          d:"Integrated oil and gas." },
+    { t:"MA",    n:"Mastercard Inc.",           s:"Financials",      d:"Global card payment processing." },
+    { t:"JNJ",   n:"Johnson & Johnson",         s:"Healthcare",      d:"Pharmaceuticals and medical devices." },
+    { t:"COST",  n:"Costco Wholesale",          s:"Consumer Staples",d:"Membership warehouse retail." },
+    { t:"HD",    n:"Home Depot Inc.",           s:"Consumer Disc.",  d:"Home improvement retail." },
+    { t:"NFLX",  n:"Netflix Inc.",              s:"Communication",   d:"Streaming entertainment." },
+    { t:"BAC",   n:"Bank of America",           s:"Financials",      d:"Major U.S. retail and investment bank." },
+    { t:"ABBV",  n:"AbbVie Inc.",               s:"Healthcare",      d:"Humira, Skyrizi, oncology drugs." },
+    { t:"AMD",   n:"Advanced Micro Devices",    s:"Technology",      d:"CPUs, GPUs, AI chips." },
+    { t:"MU",    n:"Micron Technology",         s:"Technology",      d:"Memory and storage semiconductors." },
+    { t:"GE",    n:"GE Aerospace",              s:"Industrials",     d:"Jet engines and aviation systems." },
+    { t:"PG",    n:"Procter & Gamble",          s:"Consumer Staples",d:"Tide, Pampers, Gillette brands." },
+    { t:"CVX",   n:"Chevron Corp.",             s:"Energy",          d:"Integrated oil and gas." },
+    { t:"WFC",   n:"Wells Fargo & Co.",         s:"Financials",      d:"U.S. retail and commercial banking." },
+    { t:"UNH",   n:"UnitedHealth Group",        s:"Healthcare",      d:"Managed healthcare and insurance." },
+    { t:"CSCO",  n:"Cisco Systems",             s:"Technology",      d:"Networking hardware and software." },
+    { t:"KO",    n:"Coca-Cola Co.",             s:"Consumer Staples",d:"Beverages sold in 200+ countries." },
+    { t:"MS",    n:"Morgan Stanley",            s:"Financials",      d:"Investment banking and wealth mgmt." },
+    { t:"CAT",   n:"Caterpillar Inc.",          s:"Industrials",     d:"Construction and mining equipment." },
+    { t:"GS",    n:"Goldman Sachs",             s:"Financials",      d:"Investment banking and securities." },
+    { t:"IBM",   n:"IBM Corp.",                 s:"Technology",      d:"Hybrid cloud and AI services." },
+    { t:"MRK",   n:"Merck & Co.",               s:"Healthcare",      d:"Keytruda cancer drug, vaccines." },
+    { t:"AXP",   n:"American Express",          s:"Financials",      d:"Premium credit cards and travel." },
+    { t:"RTX",   n:"RTX Corp.",                 s:"Industrials",     d:"Aerospace, defense, Pratt & Whitney." },
+    { t:"PM",    n:"Philip Morris Intl.",       s:"Consumer Staples",d:"IQOS heated tobacco, cigarettes." },
+    { t:"CRM",   n:"Salesforce Inc.",           s:"Technology",      d:"CRM software and cloud apps." },
+    { t:"TMUS",  n:"T-Mobile US",              s:"Communication",   d:"Wireless telecom services." },
+    { t:"TMO",   n:"Thermo Fisher Scientific",  s:"Healthcare",      d:"Lab instruments and life sciences." },
+    { t:"C",     n:"Citigroup Inc.",            s:"Financials",      d:"Global banking and financial services." },
+    { t:"MCD",   n:"McDonald's Corp.",          s:"Consumer Disc.",  d:"Global fast food franchise." },
+    { t:"ABT",   n:"Abbott Laboratories",       s:"Healthcare",      d:"Medical devices and diagnostics." },
+    { t:"AMAT",  n:"Applied Materials",         s:"Technology",      d:"Semiconductor manufacturing equipment." },
+    { t:"ISRG",  n:"Intuitive Surgical",        s:"Healthcare",      d:"da Vinci robotic surgery systems." },
+    { t:"LIN",   n:"Linde plc",                 s:"Basic Materials", d:"Industrial gases and engineering." },
+    { t:"DIS",   n:"Walt Disney Co.",           s:"Communication",   d:"Parks, Disney+, ESPN, studios." },
+    { t:"BX",    n:"Blackstone Inc.",           s:"Financials",      d:"Alternative asset management." },
+    { t:"PEP",   n:"PepsiCo Inc.",              s:"Consumer Staples",d:"Pepsi, Lay's, Gatorade brands." },
+    { t:"INTC",  n:"Intel Corp.",               s:"Technology",      d:"CPUs, chipmaking, foundry services." },
+    { t:"QCOM",  n:"Qualcomm Inc.",             s:"Technology",      d:"Mobile chips, Snapdragon, licensing." },
+    { t:"SCHW",  n:"Charles Schwab",            s:"Financials",      d:"Online brokerage and wealth mgmt." },
+    { t:"BA",    n:"Boeing Co.",                s:"Industrials",     d:"Commercial and defense aircraft." },
+    { t:"AMGN",  n:"Amgen Inc.",                s:"Healthcare",      d:"Biologic medicines, Repatha." },
+    { t:"INTU",  n:"Intuit Inc.",               s:"Technology",      d:"TurboTax, QuickBooks, Credit Karma." },
+    { t:"UBER",  n:"Uber Technologies",         s:"Technology",      d:"Ride-hailing and food delivery." },
+    { t:"BKNG",  n:"Booking Holdings",          s:"Consumer Disc.",  d:"Online travel Booking.com, Priceline." },
+    { t:"TJX",   n:"TJX Companies",             s:"Consumer Disc.",  d:"TJ Maxx, Marshalls off-price retail." },
+    { t:"VZ",    n:"Verizon Communications",    s:"Communication",   d:"U.S. wireless and broadband." },
+    { t:"NEE",   n:"NextEra Energy",            s:"Utilities",       d:"Largest U.S. electric utility." },
+    { t:"BLK",   n:"BlackRock Inc.",            s:"Financials",      d:"World's largest asset manager." },
+    { t:"TXN",   n:"Texas Instruments",         s:"Technology",      d:"Analog and embedded chips." },
+    { t:"ACN",   n:"Accenture plc",             s:"Technology",      d:"IT consulting and outsourcing." },
+    { t:"COF",   n:"Capital One Financial",     s:"Financials",      d:"Credit cards and consumer banking." },
+    { t:"NOW",   n:"ServiceNow Inc.",           s:"Technology",      d:"Enterprise IT workflow automation." },
+    { t:"GILD",  n:"Gilead Sciences",           s:"Healthcare",      d:"HIV, hepatitis antivirals." },
+    { t:"PFE",   n:"Pfizer Inc.",               s:"Healthcare",      d:"Vaccines, oncology, Paxlovid." },
+    { t:"ADBE",  n:"Adobe Inc.",                s:"Technology",      d:"Photoshop, Acrobat, Creative Cloud." },
+    { t:"BSX",   n:"Boston Scientific",         s:"Healthcare",      d:"Cardiovascular and endoscopy devices." },
+    { t:"LOW",   n:"Lowe's Companies",          s:"Consumer Disc.",  d:"Home improvement retail." },
+    { t:"UNP",   n:"Union Pacific Corp.",       s:"Industrials",     d:"Major U.S. freight railroad." },
+    { t:"HON",   n:"Honeywell Intl.",           s:"Industrials",     d:"Aerospace, building tech, safety." },
+    { t:"SBUX",  n:"Starbucks Corp.",           s:"Consumer Disc.",  d:"Global coffee retail chain." },
+    { t:"DE",    n:"Deere & Co.",               s:"Industrials",     d:"John Deere agricultural equipment." },
+    { t:"SPGI",  n:"S&P Global Inc.",           s:"Financials",      d:"Credit ratings and market data." },
+    { t:"BMY",   n:"Bristol-Myers Squibb",      s:"Healthcare",      d:"Oncology and cardiovascular drugs." },
+    { t:"MMM",   n:"3M Co.",                    s:"Industrials",     d:"Post-it, Scotch tape, industrial goods." },
+    { t:"LMT",   n:"Lockheed Martin",           s:"Industrials",     d:"F-35 jets, missiles, defense." },
+    { t:"SYK",   n:"Stryker Corp.",             s:"Healthcare",      d:"Orthopedic implants and instruments." },
+    { t:"REGN",  n:"Regeneron Pharmaceuticals", s:"Healthcare",      d:"Eylea, Dupixent biologic drugs." },
+    { t:"GD",    n:"General Dynamics",          s:"Industrials",     d:"Defense, Gulfstream jets." },
+    { t:"TGT",   n:"Target Corp.",              s:"Consumer Disc.",  d:"U.S. discount retail stores." },
+    { t:"CME",   n:"CME Group",                 s:"Financials",      d:"Global derivatives marketplace." },
+    { t:"ADP",   n:"ADP Inc.",                  s:"Technology",      d:"Payroll and HR solutions." },
+    { t:"MDLZ",  n:"Mondelez Intl.",            s:"Consumer Staples",d:"Oreo, Cadbury, Ritz snacks." },
+    { t:"NKE",   n:"Nike Inc.",                 s:"Consumer Disc.",  d:"Footwear, apparel, sports gear." },
+    { t:"CL",    n:"Colgate-Palmolive",         s:"Consumer Staples",d:"Toothpaste, soap, pet food." },
+    { t:"UPS",   n:"United Parcel Service",     s:"Industrials",     d:"Package delivery and logistics." },
+    { t:"PLD",   n:"Prologis Inc.",             s:"Real Estate",     d:"Industrial REIT, warehouses." },
+    { t:"FDX",   n:"FedEx Corp.",               s:"Industrials",     d:"Express delivery and freight." },
+    { t:"SO",    n:"Southern Co.",              s:"Utilities",       d:"Electric and gas utility." },
+    { t:"MO",    n:"Altria Group",              s:"Consumer Staples",d:"Marlboro cigarettes, smokeless tobacco." },
+    { t:"DUK",   n:"Duke Energy",               s:"Utilities",       d:"Electric and natural gas utility." },
+    { t:"EMR",   n:"Emerson Electric",          s:"Industrials",     d:"Automation and process control." },
+    { t:"PANW",  n:"Palo Alto Networks",        s:"Technology",      d:"Cybersecurity platforms." },
+    { t:"SLB",   n:"SLB (Schlumberger)",        s:"Energy",          d:"Oilfield services and technology." },
+    { t:"KLAC",  n:"KLA Corp.",                 s:"Technology",      d:"Semiconductor process control." },
+    { t:"OXY",   n:"Occidental Petroleum",      s:"Energy",          d:"Oil and gas exploration." }
+];
+
+// =================================================================
+//  PRICE SIMULATION  (seeded — same date always = same price)
+// =================================================================
+const BASE_PRICES = {
+    "AAPL":200,"MSFT":372,"NVDA":188,"GOOGL":154,"AMZN":182,
+    "AVGO":178,"META":520,"TSLA":240,"BRK.B":505,"LLY":938,
+    "WMT":93,"JPM":228,"V":330,"ORCL":155,"XOM":108,
+    "MA":530,"JNJ":152,"COST":960,"HD":345,"NFLX":985,
+    "BAC":36,"ABBV":185,"AMD":92,"MU":88,"GE":196,
+    "PG":163,"CVX":148,"WFC":66,"UNH":480,"CSCO":60,
+    "KO":69,"MS":120,"CAT":295,"GS":575,"IBM":240,
+    "MRK":85,"AXP":255,"RTX":134,"PM":160,"CRM":265,
+    "TMUS":230,"TMO":430,"C":68,"MCD":278,"ABT":120,
+    "AMAT":145,"ISRG":540,"LIN":460,"DIS":111,"BX":140,
+    "PEP":145,"INTC":19,"QCOM":142,"SCHW":72,"BA":175,
+    "AMGN":295,"INTU":575,"UBER":72,"BKNG":4900,"TJX":120,
+    "VZ":41,"NEE":70,"BLK":945,"TXN":155,"ACN":320,
+    "COF":170,"NOW":850,"GILD":115,"PFE":26,"ADBE":375,
+    "BSX":95,"LOW":220,"UNP":215,"HON":205,"SBUX":88,
+    "DE":430,"SPGI":455,"BMY":50,"MMM":125,"LMT":435,
+    "SYK":355,"REGN":670,"GD":240,"TGT":95,"CME":225,
+    "ADP":265,"MDLZ":67,"NKE":72,"CL":92,"UPS":92,
+    "PLD":105,"FDX":240,"SO":84,"MO":55,"DUK":118,
+    "EMR":115,"PANW":175,"SLB":38,"KLAC":680,"OXY":46
+};
+function seededRand(seed) { let x = Math.sin(seed+1)*10000; return x - Math.floor(x); }
+function daysSinceEpoch(ds) { return Math.floor(new Date(ds).getTime() / 86400000); }
+function simulatePrice(ticker, dateStr) {
+    let price = BASE_PRICES[ticker] || 100;
+    const tSeed = ticker.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
+    const start = daysSinceEpoch('2024-01-01');
+    const end   = daysSinceEpoch(dateStr);
+    for (let d = start; d <= end; d++) price *= 1 + (seededRand(d*1000+tSeed) - 0.48) * 0.025;
+    return Math.round(price * 100) / 100;
+}
+function simulateHistory(ticker, days=365) {
+    const out = [], today = new Date();
+    for (let i = days; i >= 0; i--) {
+        const d = new Date(today); d.setDate(today.getDate() - i);
+        if (d.getDay()===0 || d.getDay()===6) continue;
+        const ds = d.toISOString().split('T')[0];
+        out.push({ date: d.toLocaleDateString(), price: simulatePrice(ticker, ds) });
+    }
+    return out;
+}
+
+// =================================================================
+//  LOGIN
+// =================================================================
+async function login() {
+    const codename = document.getElementById('codename').value.trim().toUpperCase();
+    if (!codename) return;
+
+    const btn    = document.getElementById('login-btn');
+    const msgEl  = document.getElementById('login-msg');
+    btn.disabled = true;
+    btn.textContent = 'CONNECTING...';
+    msgEl.style.color = '#60a5fa';
+    msgEl.textContent = 'Loading your portfolio from cloud...';
+
+    currentUser = codename;
+
+    try {
+        const cloudData = await cloudLoad(codename);
+        if (cloudData) {
+            userData = cloudData;
+            msgEl.style.color = '#4ade80';
+            msgEl.textContent = 'Portfolio loaded ✓';
+        } else {
+            // Brand new student — create their bin immediately
+            userData = { cash: 100000, holdings: {} };
+            msgEl.style.color = '#60a5fa';
+            msgEl.textContent = 'New account — setting up...';
+            await cloudSave(codename, userData);
+            msgEl.style.color = '#4ade80';
+            msgEl.textContent = 'Account created ✓';
+        }
+    } catch(e) {
+        console.error('Login error:', e);
+        // Offline fallback — use local mirror if it exists
+        const local = localPortfolioGet(codename);
+        userData = local || { cash: 100000, holdings: {} };
+        msgEl.style.color = '#fb923c';
+        msgEl.textContent = local
+            ? '⚠ Cloud unreachable — loaded local copy'
+            : '⚠ Cloud unreachable — starting offline';
+    }
+
+    document.getElementById('display-name').textContent = 'SESSION: ' + codename;
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
+
+    populateTickerDropdown();
+    await performDailyPriceSync();
+    updateUI();
+    renderList(sp100Data);
+    loadStock('AAPL');
+
+    btn.disabled    = false;
+    btn.textContent = 'ACCESS TERMINAL';
+}
+
+// =================================================================
+//  PRICE SYNC  (prices are per-device cache — that's fine)
+// =================================================================
+async function performDailyPriceSync() {
+    document.getElementById('sync-status').textContent = 'SYNCING MARKET...';
+    document.getElementById('sync-status').classList.add('sync-pulse');
+
+    const dateStr  = new Date().toISOString().split('T')[0];
+    const cacheKey = 'market_v5_' + dateStr;
+    const cached   = localStorage.getItem(cacheKey);
+
+    if (cached) { batchPrices = JSON.parse(cached); finalizeSync(dateStr); return; }
+
+    batchPrices = {};
+    const tickers = sp100Data.map(s => s.t);
+
+    try {
+        const symbols = tickers.join(',');
+        const resp = await Promise.race([
+            fetch('https://corsproxy.io/?url=' + encodeURIComponent(
+                'https://query1.finance.yahoo.com/v7/finance/quote?symbols=' + symbols + '&fields=regularMarketPrice'
+            )),
+            new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 4000))
+        ]);
+        const data   = await resp.json();
+        const quotes = data?.quoteResponse?.result || [];
+        quotes.forEach(q => { if (q.regularMarketPrice) batchPrices[q.symbol] = q.regularMarketPrice; });
+    } catch(e) { /* use simulated */ }
+
+    tickers.forEach(t => { if (!batchPrices[t]) batchPrices[t] = simulatePrice(t, dateStr); });
+    localStorage.setItem(cacheKey, JSON.stringify(batchPrices));
+    finalizeSync(dateStr);
+}
+
+function finalizeSync(dateStr) {
+    document.getElementById('sync-status').textContent = 'DATA READY';
+    document.getElementById('sync-date-label').textContent = 'Displaying batch data from ' + dateStr;
+    document.getElementById('effective-date-val').textContent = dateStr;
+    setTimeout(() => document.getElementById('sync-status').classList.remove('sync-pulse'), 2000);
+}
+
+function populateTickerDropdown() {
+    document.getElementById('ticker-select').innerHTML =
+        sp100Data.map(s => `<option value="${s.t}">${s.t} – ${s.n}</option>`).join('');
+}
+
+// =================================================================
+//  TRADING
+// =================================================================
+async function executeTrade(type) {
+    const qty   = parseInt(document.getElementById('trade-qty').value) || 0;
+    const price = batchPrices[activeStock.ticker] || (activeStock.prices.length ? activeStock.prices.slice(-1)[0] : 0);
+    if (qty <= 0 || price <= 0 || !activeStock.ticker) return;
+
+    if (!userData.holdings[activeStock.ticker])
+        userData.holdings[activeStock.ticker] = { qty: 0, avgPrice: 0 };
+    const h = userData.holdings[activeStock.ticker];
+
+    if (type === 'BUY' && userData.cash >= qty * price) {
+        userData.cash -= qty * price;
+        h.avgPrice = ((h.qty * h.avgPrice) + (qty * price)) / (h.qty + qty);
+        h.qty += qty;
+    } else if (type === 'SELL' && h.qty >= qty) {
+        userData.cash += qty * price;
+        h.qty -= qty;
+        if (h.qty === 0) delete userData.holdings[activeStock.ticker];
+    } else {
+        return;
+    }
+
+    updateUI();
+    scheduleSave();
+}
+
+// =================================================================
+//  UI
+// =================================================================
+function updateUI() {
+    document.getElementById('cash-balance').textContent =
+        '$' + userData.cash.toLocaleString(undefined, { minimumFractionDigits: 2 });
+
+    let totalVal = 0;
+    const list   = document.getElementById('holdings-list');
+    list.innerHTML = '';
+
+    Object.entries(userData.holdings).forEach(([t, h]) => {
+        const cp  = batchPrices[t] || 0;
+        const val = h.qty * cp;
+        const chg = val - (h.qty * h.avgPrice);
+        totalVal += val;
+        list.innerHTML += `
+            <tr onclick="loadStock('${t}');switchTab('trade')" class="cursor-pointer hover:bg-slate-800 transition">
+                <td class="py-3">
+                    <div class="font-black text-blue-400">${t}</div>
+                    <div class="text-[8px] text-slate-500 uppercase">${h.qty} shares</div>
+                </td>
+                <td class="py-3 text-right font-bold">$${val.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+                <td class="py-3 text-right font-bold ${chg>=0?'text-green-400':'text-red-400'}">
+                    ${chg>=0?'+':''}${chg.toLocaleString(undefined,{minimumFractionDigits:2})}
+                </td>
+            </tr>`;
+    });
+
+    document.getElementById('stock-valuation').textContent =
+        '$' + totalVal.toLocaleString(undefined, { minimumFractionDigits: 2 });
+    document.getElementById('net-worth').textContent =
+        '$' + (userData.cash + totalVal).toLocaleString(undefined, { minimumFractionDigits: 2 });
+}
+
+function renderList(data) {
+    document.getElementById('sp500-table-body').innerHTML = data.map(s => {
+        const p = batchPrices[s.t];
+        const price = p ? '$' + p.toLocaleString(undefined,{minimumFractionDigits:2}) : 'SYNCING...';
+        return `<tr class="border-b border-slate-800 hover:bg-slate-800/30">
+            <td class="p-3 font-black text-blue-400">${s.t}</td>
+            <td class="p-3 text-slate-300 font-medium">${s.n}</td>
+            <td class="p-3 text-slate-500 font-bold text-[10px] uppercase">${s.s}</td>
+            <td class="p-3 text-slate-400 italic text-[10px] leading-tight w-1/3">${s.d}</td>
+            <td class="p-3 text-right font-mono font-bold">${price}</td>
+            <td class="p-3 text-right">
+                <button onclick="loadStock('${s.t}');switchTab('trade')"
+                        class="text-blue-500 font-black text-[10px] hover:underline uppercase">Trade</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// =================================================================
+//  CHART
+// =================================================================
+async function loadStock(ticker) {
+    if (!ticker) return;
+    document.getElementById('ticker-select').value = ticker;
+
+    const cacheKey = 'history_' + ticker;
+    let history = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+
+    if (!history) {
+        try {
+            const toTs   = Math.floor(Date.now() / 1000);
+            const fromTs = toTs - 365 * 24 * 3600;
+            const url    = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&period1=${fromTs}&period2=${toTs}`;
+            const resp   = await Promise.race([
+                fetch('https://corsproxy.io/?url=' + encodeURIComponent(url)),
+                new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 4000))
+            ]);
+            const data   = await resp.json();
+            const result = data?.chart?.result?.[0];
+            if (result) {
+                history = result.timestamp.map((t,i) => ({
+                    date:  new Date(t*1000).toLocaleDateString(),
+                    price: result.indicators.quote[0].close[i]
+                })).filter(h => h.price != null);
+                localStorage.setItem(cacheKey, JSON.stringify(history));
             }
-            return null;
+        } catch(e) {}
+
+        if (!history) {
+            history = simulateHistory(ticker, 365);
+            localStorage.setItem(cacheKey, JSON.stringify(history));
         }
+    }
 
-        // Load portfolio from JSONBin. Returns parsed object or null.
-        async function cloudLoad(codename) {
-            const binId = await findBinByCodename(codename);
-            if (!binId) return null;
-            const resp = await fetch(`${JSONBIN_BASE}/b/${binId}/latest`, {
-                headers: { 'X-Master-Key': JSONBIN_API_KEY }
-            });
-            if (!resp.ok) return null;
-            const data = await resp.json();
-            return data?.record || null;
-        }
-
-        // Save portfolio to JSONBin.
-        // If the bin exists → PUT (update). If not → POST (create new bin).
-        async function cloudSave(codename, portfolio) {
-            const cache = getBinIdCache();
-            let binId = cache[codename];
-
-            if (binId) {
-                // Update existing bin
-                const resp = await fetch(`${JSONBIN_BASE}/b/${binId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Master-Key': JSONBIN_API_KEY
-                    },
-                    body: JSON.stringify(portfolio)
-                });
-                if (!resp.ok) throw new Error(`PUT failed: ${resp.status}`);
-            } else {
-                // Create new bin named after the codename
-                const resp = await fetch(`${JSONBIN_BASE}/b`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Master-Key': JSONBIN_API_KEY,
-                        'X-Bin-Name': `portfolio_${codename}`,
-                        'X-Bin-Private': 'true'
-                    },
-                    body: JSON.stringify(portfolio)
-                });
-                if (!resp.ok) throw new Error(`POST failed: ${resp.status}`);
-                const data = await resp.json();
-                const newId = data?.metadata?.id;
-                if (newId) {
-                    cache[codename] = newId;
-                    setBinIdCache(cache);
-                }
-            }
-        }
-
-        // =============================================================
-        //  SAVE BANNER HELPERS
-        // =============================================================
-        let bannerTimer = null;
-        function showBanner(type, msg) {
-            const b = document.getElementById('cloud-banner');
-            b.className = type;
-            b.innerText = msg;
-            clearTimeout(bannerTimer);
-            if (type === 'saved') bannerTimer = setTimeout(() => { b.className = ''; }, 2500);
-        }
-
-        // =============================================================
-        //  DEBOUNCED SAVE  (waits 1s after last trade before hitting API)
-        // =============================================================
-        let saveTimer = null;
-        function scheduleSave() {
-            clearTimeout(saveTimer);
-            showBanner('saving', '⟳ SAVING TO CLOUD...');
-            saveTimer = setTimeout(async () => {
-                try {
-                    await cloudSave(currentUser, userData);
-                    // Also mirror to localStorage as an offline fallback
-                    try { localStorage.setItem(`portfolio_local_${currentUser}`, JSON.stringify(userData)); } catch(e) {}
-                    showBanner('saved', '✓ PORTFOLIO SAVED');
-                } catch(e) {
-                    console.error('Cloud save failed:', e);
-                    // Still persist locally so the session isn't lost
-                    try { localStorage.setItem(`portfolio_local_${currentUser}`, JSON.stringify(userData)); } catch(e2) {}
-                    showBanner('error', '⚠ CLOUD SAVE FAILED · SAVED LOCALLY');
-                }
-            }, 1000);
-        }
-
-        // =============================================================
-        //  APP STATE
-        // =============================================================
-        let currentUser = '';
-        let userData    = { cash: 100000, holdings: {} };
-        let activeStock = { ticker: '', dates: [], prices: [], sma50: [], sma200: [] };
-        let batchPrices = {};
-        let chartInstance = null;
-
-        // =============================================================
-        //  STOCK DATA
-        // =============================================================
-        const sp100Data = [
-            { t: "AAPL", n: "Apple Inc.", s: "Technology", d: "Consumer electronics, iPhone, Mac, services." },
-            { t: "MSFT", n: "Microsoft Corp.", s: "Technology", d: "Software, Azure cloud, Office 365." },
-            { t: "NVDA", n: "NVIDIA Corp.", s: "Technology", d: "AI chips, GPUs, data center computing." },
-            { t: "GOOGL", n: "Alphabet Inc.", s: "Communication", d: "Google Search, YouTube, Google Cloud." },
-            { t: "AMZN", n: "Amazon.com Inc.", s: "Consumer Disc.", d: "E-commerce, AWS cloud, Prime." },
-            { t: "AVGO", n: "Broadcom Inc.", s: "Technology", d: "Semiconductors and infrastructure software." },
-            { t: "META", n: "Meta Platforms", s: "Communication", d: "Facebook, Instagram, WhatsApp." },
-            { t: "TSLA", n: "Tesla Inc.", s: "Consumer Disc.", d: "Electric vehicles and clean energy." },
-            { t: "BRK.B", n: "Berkshire Hathaway", s: "Financials", d: "Diversified investment conglomerate." },
-            { t: "LLY", n: "Eli Lilly & Co.", s: "Healthcare", d: "Pharmaceuticals, GLP-1 weight loss drugs." },
-            { t: "WMT", n: "Walmart Inc.", s: "Consumer Staples", d: "Retail, grocery, e-commerce." },
-            { t: "JPM", n: "JPMorgan Chase", s: "Financials", d: "Largest U.S. bank by assets." },
-            { t: "V", n: "Visa Inc.", s: "Financials", d: "Global payments and card network." },
-            { t: "ORCL", n: "Oracle Corp.", s: "Technology", d: "Cloud databases, enterprise software." },
-            { t: "XOM", n: "Exxon Mobil Corp.", s: "Energy", d: "Integrated oil and gas." },
-            { t: "MA", n: "Mastercard Inc.", s: "Financials", d: "Global card payment processing." },
-            { t: "JNJ", n: "Johnson & Johnson", s: "Healthcare", d: "Pharmaceuticals and medical devices." },
-            { t: "COST", n: "Costco Wholesale", s: "Consumer Staples", d: "Membership warehouse retail." },
-            { t: "HD", n: "Home Depot Inc.", s: "Consumer Disc.", d: "Home improvement retail." },
-            { t: "NFLX", n: "Netflix Inc.", s: "Communication", d: "Streaming entertainment." },
-            { t: "BAC", n: "Bank of America", s: "Financials", d: "Major U.S. retail and investment bank." },
-            { t: "ABBV", n: "AbbVie Inc.", s: "Healthcare", d: "Humira, Skyrizi, oncology drugs." },
-            { t: "AMD", n: "Advanced Micro Devices", s: "Technology", d: "CPUs, GPUs, AI chips." },
-            { t: "MU", n: "Micron Technology", s: "Technology", d: "Memory and storage semiconductors." },
-            { t: "GE", n: "GE Aerospace", s: "Industrials", d: "Jet engines and aviation systems." },
-            { t: "PG", n: "Procter & Gamble", s: "Consumer Staples", d: "Tide, Pampers, Gillette brands." },
-            { t: "CVX", n: "Chevron Corp.", s: "Energy", d: "Integrated oil and gas." },
-            { t: "WFC", n: "Wells Fargo & Co.", s: "Financials", d: "U.S. retail and commercial banking." },
-            { t: "UNH", n: "UnitedHealth Group", s: "Healthcare", d: "Managed healthcare and insurance." },
-            { t: "CSCO", n: "Cisco Systems", s: "Technology", d: "Networking hardware and software." },
-            { t: "KO", n: "Coca-Cola Co.", s: "Consumer Staples", d: "Beverages sold in 200+ countries." },
-            { t: "MS", n: "Morgan Stanley", s: "Financials", d: "Investment banking and wealth mgmt." },
-            { t: "CAT", n: "Caterpillar Inc.", s: "Industrials", d: "Construction and mining equipment." },
-            { t: "GS", n: "Goldman Sachs", s: "Financials", d: "Investment banking and securities." },
-            { t: "IBM", n: "IBM Corp.", s: "Technology", d: "Hybrid cloud and AI services." },
-            { t: "MRK", n: "Merck & Co.", s: "Healthcare", d: "Keytruda cancer drug, vaccines." },
-            { t: "AXP", n: "American Express", s: "Financials", d: "Premium credit cards and travel." },
-            { t: "RTX", n: "RTX Corp.", s: "Industrials", d: "Aerospace, defense, Pratt & Whitney." },
-            { t: "PM", n: "Philip Morris Intl.", s: "Consumer Staples", d: "IQOS heated tobacco, cigarettes." },
-            { t: "CRM", n: "Salesforce Inc.", s: "Technology", d: "CRM software and cloud apps." },
-            { t: "TMUS", n: "T-Mobile US", s: "Communication", d: "Wireless telecom services." },
-            { t: "TMO", n: "Thermo Fisher Scientific", s: "Healthcare", d: "Lab instruments and life sciences." },
-            { t: "C", n: "Citigroup Inc.", s: "Financials", d: "Global banking and financial services." },
-            { t: "MCD", n: "McDonald's Corp.", s: "Consumer Disc.", d: "Global fast food franchise." },
-            { t: "ABT", n: "Abbott Laboratories", s: "Healthcare", d: "Medical devices and diagnostics." },
-            { t: "AMAT", n: "Applied Materials", s: "Technology", d: "Semiconductor manufacturing equipment." },
-            { t: "ISRG", n: "Intuitive Surgical", s: "Healthcare", d: "da Vinci robotic surgery systems." },
-            { t: "LIN", n: "Linde plc", s: "Basic Materials", d: "Industrial gases and engineering." },
-            { t: "DIS", n: "Walt Disney Co.", s: "Communication", d: "Parks, Disney+, ESPN, studios." },
-            { t: "BX", n: "Blackstone Inc.", s: "Financials", d: "Alternative asset management." },
-            { t: "PEP", n: "PepsiCo Inc.", s: "Consumer Staples", d: "Pepsi, Lay's, Gatorade brands." },
-            { t: "INTC", n: "Intel Corp.", s: "Technology", d: "CPUs, chipmaking, foundry services." },
-            { t: "QCOM", n: "Qualcomm Inc.", s: "Technology", d: "Mobile chips, Snapdragon, licensing." },
-            { t: "SCHW", n: "Charles Schwab", s: "Financials", d: "Online brokerage and wealth mgmt." },
-            { t: "BA", n: "Boeing Co.", s: "Industrials", d: "Commercial and defense aircraft." },
-            { t: "AMGN", n: "Amgen Inc.", s: "Healthcare", d: "Biologic medicines, Repatha." },
-            { t: "INTU", n: "Intuit Inc.", s: "Technology", d: "TurboTax, QuickBooks, Credit Karma." },
-            { t: "UBER", n: "Uber Technologies", s: "Technology", d: "Ride-hailing and food delivery." },
-            { t: "BKNG", n: "Booking Holdings", s: "Consumer Disc.", d: "Online travel Booking.com, Priceline." },
-            { t: "TJX", n: "TJX Companies", s: "Consumer Disc.", d: "TJ Maxx, Marshalls off-price retail." },
-            { t: "VZ", n: "Verizon Communications", s: "Communication", d: "U.S. wireless and broadband." },
-            { t: "NEE", n: "NextEra Energy", s: "Utilities", d: "Largest U.S. electric utility." },
-            { t: "BLK", n: "BlackRock Inc.", s: "Financials", d: "World's largest asset manager." },
-            { t: "TXN", n: "Texas Instruments", s: "Technology", d: "Analog and embedded chips." },
-            { t: "ACN", n: "Accenture plc", s: "Technology", d: "IT consulting and outsourcing." },
-            { t: "COF", n: "Capital One Financial", s: "Financials", d: "Credit cards and consumer banking." },
-            { t: "NOW", n: "ServiceNow Inc.", s: "Technology", d: "Enterprise IT workflow automation." },
-            { t: "GILD", n: "Gilead Sciences", s: "Healthcare", d: "HIV, hepatitis antivirals." },
-            { t: "PFE", n: "Pfizer Inc.", s: "Healthcare", d: "Vaccines, oncology, Paxlovid." },
-            { t: "ADBE", n: "Adobe Inc.", s: "Technology", d: "Photoshop, Acrobat, Creative Cloud." },
-            { t: "BSX", n: "Boston Scientific", s: "Healthcare", d: "Cardiovascular and endoscopy devices." },
-            { t: "LOW", n: "Lowe's Companies", s: "Consumer Disc.", d: "Home improvement retail." },
-            { t: "UNP", n: "Union Pacific Corp.", s: "Industrials", d: "Major U.S. freight railroad." },
-            { t: "HON", n: "Honeywell Intl.", s: "Industrials", d: "Aerospace, building tech, safety." },
-            { t: "SBUX", n: "Starbucks Corp.", s: "Consumer Disc.", d: "Global coffee retail chain." },
-            { t: "DE", n: "Deere & Co.", s: "Industrials", d: "John Deere agricultural equipment." },
-            { t: "SPGI", n: "S&P Global Inc.", s: "Financials", d: "Credit ratings and market data." },
-            { t: "BMY", n: "Bristol-Myers Squibb", s: "Healthcare", d: "Oncology and cardiovascular drugs." },
-            { t: "MMM", n: "3M Co.", s: "Industrials", d: "Post-it, Scotch tape, industrial goods." },
-            { t: "LMT", n: "Lockheed Martin", s: "Industrials", d: "F-35 jets, missiles, defense." },
-            { t: "SYK", n: "Stryker Corp.", s: "Healthcare", d: "Orthopedic implants and instruments." },
-            { t: "REGN", n: "Regeneron Pharmaceuticals", s: "Healthcare", d: "Eylea, Dupixent biologic drugs." },
-            { t: "GD", n: "General Dynamics", s: "Industrials", d: "Defense, Gulfstream jets." },
-            { t: "TGT", n: "Target Corp.", s: "Consumer Disc.", d: "U.S. discount retail stores." },
-            { t: "CME", n: "CME Group", s: "Financials", d: "Global derivatives marketplace." },
-            { t: "ADP", n: "ADP Inc.", s: "Technology", d: "Payroll and HR solutions." },
-            { t: "MDLZ", n: "Mondelez Intl.", s: "Consumer Staples", d: "Oreo, Cadbury, Ritz snacks." },
-            { t: "NKE", n: "Nike Inc.", s: "Consumer Disc.", d: "Footwear, apparel, sports gear." },
-            { t: "CL", n: "Colgate-Palmolive", s: "Consumer Staples", d: "Toothpaste, soap, pet food." },
-            { t: "UPS", n: "United Parcel Service", s: "Industrials", d: "Package delivery and logistics." },
-            { t: "PLD", n: "Prologis Inc.", s: "Real Estate", d: "Industrial REIT, warehouses." },
-            { t: "FDX", n: "FedEx Corp.", s: "Industrials", d: "Express delivery and freight." },
-            { t: "SO", n: "Southern Co.", s: "Utilities", d: "Electric and gas utility." },
-            { t: "MO", n: "Altria Group", s: "Consumer Staples", d: "Marlboro cigarettes, smokeless tobacco." },
-            { t: "DUK", n: "Duke Energy", s: "Utilities", d: "Electric and natural gas utility." },
-            { t: "EMR", n: "Emerson Electric", s: "Industrials", d: "Automation and process control." },
-            { t: "PANW", n: "Palo Alto Networks", s: "Technology", d: "Cybersecurity platforms." },
-            { t: "SLB", n: "SLB (Schlumberger)", s: "Energy", d: "Oilfield services and technology." },
-            { t: "KLAC", n: "KLA Corp.", s: "Technology", d: "Semiconductor process control." },
-            { t: "OXY", n: "Occidental Petroleum", s: "Energy", d: "Oil and gas exploration." }
-        ];
-
-        // =============================================================
-        //  BASE PRICES & SIMULATION (unchanged from v3)
-        // =============================================================
-        const BASE_PRICES = {
-            "AAPL":200,"MSFT":372,"NVDA":188,"GOOGL":154,"AMZN":182,
-            "AVGO":178,"META":520,"TSLA":240,"BRK.B":505,"LLY":938,
-            "WMT":93,"JPM":228,"V":330,"ORCL":155,"XOM":108,
-            "MA":530,"JNJ":152,"COST":960,"HD":345,"NFLX":985,
-            "BAC":36,"ABBV":185,"AMD":92,"MU":88,"GE":196,
-            "PG":163,"CVX":148,"WFC":66,"UNH":480,"CSCO":60,
-            "KO":69,"MS":120,"CAT":295,"GS":575,"IBM":240,
-            "MRK":85,"AXP":255,"RTX":134,"PM":160,"CRM":265,
-            "TMUS":230,"TMO":430,"C":68,"MCD":278,"ABT":120,
-            "AMAT":145,"ISRG":540,"LIN":460,"DIS":111,"BX":140,
-            "PEP":145,"INTC":19,"QCOM":142,"SCHW":72,"BA":175,
-            "AMGN":295,"INTU":575,"UBER":72,"BKNG":4900,"TJX":120,
-            "VZ":41,"NEE":70,"BLK":945,"TXN":155,"ACN":320,
-            "COF":170,"NOW":850,"GILD":115,"PFE":26,"ADBE":375,
-            "BSX":95,"LOW":220,"UNP":215,"HON":205,"SBUX":88,
-            "DE":430,"SPGI":455,"BMY":50,"MMM":125,"LMT":435,
-            "SYK":355,"REGN":670,"GD":240,"TGT":95,"CME":225,
-            "ADP":265,"MDLZ":67,"NKE":72,"CL":92,"UPS":92,
-            "PLD":105,"FDX":240,"SO":84,"MO":55,"DUK":118,
-            "EMR":115,"PANW":175,"SLB":38,"KLAC":680,"OXY":46
+    if (history && history.length) {
+        const prices = history.map(h => h.price);
+        activeStock  = {
+            ticker,
+            dates:  history.map(h => h.date),
+            prices,
+            sma50:  calcSMA(prices, 50),
+            sma200: calcSMA(prices, 200)
         };
+        document.getElementById('trade-ticker-label').textContent = ticker;
+        const dp = batchPrices[ticker] || prices.slice(-1)[0] || 0;
+        document.getElementById('current-price').textContent =
+            '$' + dp.toLocaleString(undefined, { minimumFractionDigits: 2 });
+        updateTrendRange('1Y');
+        updateUI();
+    }
+}
 
-        function seededRand(seed) {
-            let x = Math.sin(seed + 1) * 10000;
-            return x - Math.floor(x);
-        }
-        function getDaysSinceEpoch(dateStr) {
-            return Math.floor(new Date(dateStr).getTime() / 86400000);
-        }
-        function simulatePriceForDate(ticker, dateStr) {
-            const base = BASE_PRICES[ticker] || 100;
-            const day = getDaysSinceEpoch(dateStr);
-            let price = base;
-            const tickerSeed = ticker.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-            const startDay = getDaysSinceEpoch('2024-01-01');
-            for (let d = startDay; d <= day; d++) {
-                const r = seededRand(d * 1000 + tickerSeed);
-                price = price * (1 + (r - 0.48) * 0.025);
-            }
-            return Math.round(price * 100) / 100;
-        }
-        function simulateHistory(ticker, days = 365) {
-            const history = [];
-            const today = new Date();
-            for (let i = days; i >= 0; i--) {
-                const d = new Date(today);
-                d.setDate(today.getDate() - i);
-                if (d.getDay() === 0 || d.getDay() === 6) continue;
-                const dateStr = d.toISOString().split('T')[0];
-                history.push({ date: d.toLocaleDateString(), price: simulatePriceForDate(ticker, dateStr) });
-            }
-            return history;
-        }
+function calcSMA(data, period) {
+    return data.map((_,i) => i < period-1 ? null :
+        data.slice(i-period+1, i+1).reduce((a,b) => a+b, 0) / period);
+}
 
-        // =============================================================
-        //  LOGIN  — loads from cloud, falls back to local cache
-        // =============================================================
-        async function login() {
-            const inputName = document.getElementById('codename').value.trim().toUpperCase();
-            if (!inputName) return;
+function updateTrendRange(range, btn) {
+    if (btn) { document.querySelectorAll('.btn-range').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+    const n = { '30D':30,'6M':126,'1Y':252,'2Y':504 }[range] || 252;
+    renderChart(
+        activeStock.dates.slice(-n),
+        activeStock.prices.slice(-n),
+        activeStock.sma50.slice(-n),
+        activeStock.sma200.slice(-n)
+    );
+}
 
-            const btn = document.getElementById('login-btn');
-            const errEl = document.getElementById('login-error');
-            btn.innerText = 'CONNECTING...';
-            btn.disabled = true;
-            errEl.classList.add('hidden');
-
-            currentUser = inputName;
-
-            try {
-                // Try cloud first
-                const cloudData = await cloudLoad(currentUser);
-                if (cloudData) {
-                    userData = cloudData;
-                } else {
-                    // No cloud record → check local fallback
-                    const localData = localStorage.getItem(`portfolio_local_${currentUser}`);
-                    userData = localData ? JSON.parse(localData) : { cash: 100000, holdings: {} };
-                    // If brand new, save a fresh account to cloud immediately
-                    if (!localData) await cloudSave(currentUser, userData).catch(() => {});
-                }
-            } catch(e) {
-                console.error('Login cloud load failed:', e);
-                // Fall back to local cache gracefully
-                const localData = localStorage.getItem(`portfolio_local_${currentUser}`);
-                userData = localData ? JSON.parse(localData) : { cash: 100000, holdings: {} };
-                showBanner('offline', '⚠ OFFLINE MODE · USING LOCAL DATA');
-            }
-
-            document.getElementById('display-name').innerText = `SESSION: ${currentUser}`;
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('dashboard').classList.remove('hidden');
-
-            populateTickerDropdown();
-            await performDailyPriceSync();
-            updateUI();
-            renderList(sp100Data);
-            loadStock('AAPL');
-
-            btn.innerText = 'ACCESS TERMINAL';
-            btn.disabled = false;
-        }
-
-        // =============================================================
-        //  PRICE SYNC  (localStorage cache for prices — fine per-device)
-        // =============================================================
-        async function performDailyPriceSync() {
-            document.getElementById('sync-status').innerText = 'SYNCING MARKET...';
-            document.getElementById('sync-status').classList.add('sync-pulse');
-
-            const today = new Date();
-            const dateStr = today.toISOString().split('T')[0];
-            const cacheKey = `market_batch_v4_${dateStr}`;
-
-            const cachedData = localStorage.getItem(cacheKey);
-            if (cachedData) {
-                batchPrices = JSON.parse(cachedData);
-                finalizeSync(dateStr);
-                return;
-            }
-
-            batchPrices = {};
-            const tickers = sp100Data.map(s => s.t);
-
-            try {
-                const symbols = tickers.join(',');
-                const resp = await Promise.race([
-                    fetch(`https://corsproxy.io/?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}&fields=regularMarketPrice`)}`),
-                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
-                ]);
-                const data = await resp.json();
-                const quotes = data?.quoteResponse?.result || [];
-                quotes.forEach(q => { if (q.regularMarketPrice) batchPrices[q.symbol] = q.regularMarketPrice; });
-            } catch(e) {
-                console.log('Live prices unavailable, using simulated prices');
-            }
-
-            tickers.forEach(ticker => {
-                if (!batchPrices[ticker]) batchPrices[ticker] = simulatePriceForDate(ticker, dateStr);
-            });
-
-            localStorage.setItem(cacheKey, JSON.stringify(batchPrices));
-            finalizeSync(dateStr);
-        }
-
-        function finalizeSync(dateStr) {
-            document.getElementById('sync-status').innerText = 'DATA READY';
-            document.getElementById('sync-date-label').innerText = `Displaying batch data from ${dateStr}`;
-            document.getElementById('effective-date-val').innerText = dateStr;
-            setTimeout(() => document.getElementById('sync-status').classList.remove('sync-pulse'), 2000);
-        }
-
-        function populateTickerDropdown() {
-            const select = document.getElementById('ticker-select');
-            select.innerHTML = sp100Data.map(s => `<option value="${s.t}">${s.t} – ${s.n}</option>`).join('');
-        }
-
-        // =============================================================
-        //  TRADING
-        // =============================================================
-        async function executeTrade(type) {
-            const qty = parseInt(document.getElementById('trade-qty').value) || 0;
-            const price = batchPrices[activeStock.ticker] || (activeStock.prices.length ? activeStock.prices.slice(-1)[0] : 0);
-
-            if (qty <= 0 || price <= 0 || !activeStock.ticker) return;
-
-            if (!userData.holdings[activeStock.ticker]) userData.holdings[activeStock.ticker] = { qty: 0, avgPrice: 0 };
-            const h = userData.holdings[activeStock.ticker];
-
-            if (type === 'BUY' && userData.cash >= qty * price) {
-                const totalCost = (h.qty * h.avgPrice) + (qty * price);
-                userData.cash -= qty * price;
-                h.qty += qty;
-                h.avgPrice = totalCost / h.qty;
-            } else if (type === 'SELL' && h.qty >= qty) {
-                userData.cash += qty * price;
-                h.qty -= qty;
-                if (h.qty === 0) delete userData.holdings[activeStock.ticker];
-            } else {
-                return; // invalid trade (insufficient cash or shares)
-            }
-
-            updateUI();
-            scheduleSave(); // debounced cloud save
-        }
-
-        // =============================================================
-        //  UI RENDERING
-        // =============================================================
-        function updateUI() {
-            document.getElementById('cash-balance').innerText = '$' + userData.cash.toLocaleString(undefined, { minimumFractionDigits: 2 });
-            let totalPortfolioVal = 0;
-            const list = document.getElementById('holdings-list');
-            list.innerHTML = '';
-
-            Object.entries(userData.holdings).forEach(([t, data]) => {
-                const currentPrice = batchPrices[t] || 0;
-                const currentVal = data.qty * currentPrice;
-                const change = currentVal - (data.qty * data.avgPrice);
-                totalPortfolioVal += currentVal;
-                list.innerHTML += `
-                    <tr onclick="loadStock('${t}'); switchTab('trade')" class="cursor-pointer hover:bg-slate-800 transition">
-                        <td class="py-3">
-                            <div class="font-black text-blue-400">${t}</div>
-                            <div class="text-[8px] text-slate-500 uppercase">${data.qty} shares</div>
-                        </td>
-                        <td class="py-3 text-right font-bold">$${currentVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                        <td class="py-3 text-right font-bold ${change >= 0 ? 'text-green-400' : 'text-red-400'}">
-                            ${change >= 0 ? '+' : ''}${change.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </td>
-                    </tr>`;
-            });
-
-            document.getElementById('stock-valuation').innerText = '$' + totalPortfolioVal.toLocaleString(undefined, { minimumFractionDigits: 2 });
-            document.getElementById('net-worth').innerText = '$' + (userData.cash + totalPortfolioVal).toLocaleString(undefined, { minimumFractionDigits: 2 });
-        }
-
-        function renderList(data) {
-            document.getElementById('sp500-table-body').innerHTML = data.map(s => {
-                const price = batchPrices[s.t];
-                const lastPrice = price ? '$' + price.toLocaleString(undefined, { minimumFractionDigits: 2 }) : 'SYNCING...';
-                return `
-                <tr class="border-b border-slate-800 hover:bg-slate-800/30">
-                    <td class="p-3 font-black text-blue-400">${s.t}</td>
-                    <td class="p-3 text-slate-300 font-medium">${s.n}</td>
-                    <td class="p-3 text-slate-500 font-bold text-[10px] uppercase">${s.s}</td>
-                    <td class="p-3 text-slate-400 italic text-[10px] leading-tight w-1/3">${s.d}</td>
-                    <td class="p-3 text-right font-mono font-bold">${lastPrice}</td>
-                    <td class="p-3 text-right"><button onclick="loadStock('${s.t}'); switchTab('trade')" class="text-blue-500 font-black text-[10px] hover:underline uppercase">Trade</button></td>
-                </tr>`;
-            }).join('');
-        }
-
-        // =============================================================
-        //  CHART & STOCK LOADING
-        // =============================================================
-        async function loadStock(ticker) {
-            if (!ticker) return;
-            document.getElementById('ticker-select').value = ticker;
-
-            const cacheKey = `history_${ticker}`;
-            let history = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-
-            if (!history) {
-                try {
-                    const toTs = Math.floor(Date.now() / 1000);
-                    const fromTs = toTs - 365 * 24 * 3600;
-                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&period1=${fromTs}&period2=${toTs}`;
-                    const resp = await Promise.race([
-                        fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`),
-                        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000))
-                    ]);
-                    const data = await resp.json();
-                    const result = data?.chart?.result?.[0];
-                    if (result) {
-                        const timestamps = result.timestamp;
-                        const closes = result.indicators.quote[0].close;
-                        history = timestamps.map((t, i) => ({
-                            date: new Date(t * 1000).toLocaleDateString(),
-                            price: closes[i]
-                        })).filter(h => h.price != null);
-                        localStorage.setItem(cacheKey, JSON.stringify(history));
-                    }
-                } catch(e) {}
-
-                if (!history) {
-                    history = simulateHistory(ticker, 365);
-                    localStorage.setItem(cacheKey, JSON.stringify(history));
-                }
-            }
-
-            if (history && history.length) {
-                const prices = history.map(h => h.price);
-                activeStock = {
-                    ticker,
-                    dates: history.map(h => h.date),
-                    prices,
-                    sma50: calculateSMA(prices, 50),
-                    sma200: calculateSMA(prices, 200)
-                };
-                document.getElementById('trade-ticker-label').innerText = ticker;
-                const displayPrice = batchPrices[ticker] || prices.slice(-1)[0] || 0;
-                document.getElementById('current-price').innerText = '$' + displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2 });
-                updateTrendRange('1Y');
-                updateUI();
+function renderChart(labels, p, s50, s200) {
+    const ctx = document.getElementById('stockChart').getContext('2d');
+    if (chartInstance) chartInstance.destroy();
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label:'Price',   data:p,   borderColor:'#3b82f6', borderWidth:2, pointRadius:0, fill:true, backgroundColor:'rgba(59,130,246,0.05)' },
+                { label:'50 SMA',  data:s50,  borderColor:'#fbbf24', borderWidth:1, pointRadius:0 },
+                { label:'200 SMA', data:s200, borderColor:'#ef4444', borderWidth:1, pointRadius:0 }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display:true, labels: { color:'#94a3b8', font:{ size:10, weight:'800' } } } },
+            scales: {
+                x: { ticks:{ color:'#475569', maxTicksLimit:8 }, grid:{ display:false } },
+                y: { grid:{ color:'#1e293b' }, ticks:{ color:'#475569' } }
             }
         }
+    });
+}
 
-        function calculateSMA(data, period) {
-            return data.map((_, i) => i < period - 1 ? null : data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period);
-        }
+function switchTab(tab) {
+    document.getElementById('section-trade').classList.toggle('hidden', tab !== 'trade');
+    document.getElementById('section-list').classList.toggle('hidden',  tab !== 'list');
+    document.getElementById('tab-trade').classList.toggle('tab-active', tab === 'trade');
+    document.getElementById('tab-list').classList.toggle('tab-active',  tab === 'list');
+    if (tab === 'list') renderList(sp100Data);
+}
 
-        function updateTrendRange(range, btn) {
-            if (btn) { document.querySelectorAll('.btn-range').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
-            const count = { '30D': 30, '6M': 126, '1Y': 252, '2Y': 504 }[range] || 252;
-            renderChart(activeStock.dates.slice(-count), activeStock.prices.slice(-count), activeStock.sma50.slice(-count), activeStock.sma200.slice(-count));
-        }
-
-        function renderChart(labels, p, s50, s200) {
-            const ctx = document.getElementById('stockChart').getContext('2d');
-            if (chartInstance) chartInstance.destroy();
-            chartInstance = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels,
-                    datasets: [
-                        { label: 'Price', data: p, borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, fill: true, backgroundColor: 'rgba(59,130,246,0.05)' },
-                        { label: '50 SMA', data: s50, borderColor: '#fbbf24', borderWidth: 1, pointRadius: 0 },
-                        { label: '200 SMA', data: s200, borderColor: '#ef4444', borderWidth: 1, pointRadius: 0 }
-                    ]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: true, labels: { color: '#94a3b8', font: { size: 10, weight: '800' } } } },
-                    scales: {
-                        x: { ticks: { color: '#475569', maxTicksLimit: 8 }, grid: { display: false } },
-                        y: { grid: { color: '#1e293b' }, ticks: { color: '#475569' } }
-                    }
-                }
-            });
-        }
-
-        function switchTab(tab) {
-            document.getElementById('section-trade').classList.toggle('hidden', tab !== 'trade');
-            document.getElementById('section-list').classList.toggle('hidden', tab !== 'list');
-            document.getElementById('tab-trade').classList.toggle('tab-active', tab === 'trade');
-            document.getElementById('tab-list').classList.toggle('tab-active', tab === 'list');
-            if (tab === 'list') renderList(sp100Data);
-        }
-
-        function filterDirectory() {
-            const query = document.getElementById('directory-search').value.toUpperCase();
-            renderList(sp100Data.filter(s => s.t.includes(query) || s.n.toUpperCase().includes(query)));
-        }
-    </script>
+function filterDirectory() {
+    const q = document.getElementById('directory-search').value.toUpperCase();
+    renderList(sp100Data.filter(s => s.t.includes(q) || s.n.toUpperCase().includes(q)));
+}
+</script>
 </body>
 </html>
