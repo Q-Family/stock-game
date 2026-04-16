@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>S&P 100 | Smart-Sync Terminal v3</title>
+    <title>S&P 100 | Smart-Sync Terminal v4</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -19,18 +19,30 @@
         .sync-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; color: #3b82f6; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
         select { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1em; }
+        #cloud-banner { display: none; position: fixed; bottom: 1rem; right: 1rem; z-index: 100; padding: 10px 16px; border-radius: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; }
+        #cloud-banner.saving  { display: block; background: #1e3a5f; color: #60a5fa; border: 1px solid #2563eb44; }
+        #cloud-banner.saved   { display: block; background: #14532d; color: #4ade80; border: 1px solid #16a34a44; }
+        #cloud-banner.error   { display: block; background: #450a0a; color: #f87171; border: 1px solid #dc262644; }
+        #cloud-banner.offline { display: block; background: #431407; color: #fb923c; border: 1px solid #ea580c44; }
     </style>
 </head>
 <body>
 
+    <!-- Cloud save status banner -->
+    <div id="cloud-banner"></div>
+
     <div id="login-screen" class="min-h-screen flex items-center justify-center px-4">
         <div class="card p-8 w-full max-w-md text-center shadow-2xl border-blue-500/30">
             <h1 class="text-3xl font-black text-blue-400 mb-2 tracking-tighter uppercase">Market Insight</h1>
-            <p class="text-slate-400 mb-6 text-sm italic">Secure Portfolio Terminal</p>
-            <input type="text" id="codename" placeholder="ENTER CODENAME" 
+            <p class="text-slate-400 mb-1 text-sm italic">Secure Portfolio Terminal</p>
+            <p class="text-slate-600 mb-6 text-[10px] uppercase tracking-widest">v4 · Cloud Sync</p>
+            <input type="text" id="codename" placeholder="ENTER CODENAME"
                    oninput="this.value = this.value.toUpperCase()"
-                   class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg mb-4 text-center text-lg font-bold text-blue-400 outline-none uppercase focus:border-blue-500">
-            <button onclick="login()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition uppercase tracking-widest">Access Terminal</button>
+                   onkeydown="if(event.key==='Enter') login()"
+                   class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg mb-2 text-center text-lg font-bold text-blue-400 outline-none uppercase focus:border-blue-500">
+            <p id="login-error" class="text-red-400 text-xs mb-3 hidden">Could not connect to cloud. Check your connection and try again.</p>
+            <button onclick="login()" id="login-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition uppercase tracking-widest">Access Terminal</button>
+            <p class="text-slate-700 text-[9px] mt-4 uppercase tracking-widest">Portfolios saved to cloud · Any device · Any browser</p>
         </div>
     </div>
 
@@ -40,7 +52,7 @@
                 <nav class="flex space-x-8">
                     <button onclick="switchTab('trade')" id="tab-trade" class="pb-1 text-xs font-black tab-active uppercase">Trade Desk</button>
                     <button onclick="switchTab('list')" id="tab-list" class="pb-1 text-xs font-black text-slate-500 hover:text-white uppercase transition">Company Directory</button>
-                    <span class="text-[9px] font-bold text-slate-600 self-end pb-1">v3</span>
+                    <span class="text-[9px] font-bold text-slate-600 self-end pb-1">v4</span>
                 </nav>
                 <div class="flex items-center gap-4">
                     <div id="sync-status" class="text-[9px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-500 uppercase tracking-tighter">OFFLINE</div>
@@ -103,7 +115,8 @@
                             <p id="current-price" class="text-4xl font-black text-white">$0.00</p>
                         </div>
                         <div class="flex gap-2">
-                            <input type="number" id="trade-qty" placeholder="QTY" class="w-20 bg-slate-800 border border-slate-600 rounded-lg py-3 text-center font-bold">
+                            <input type="number" id="trade-qty" placeholder="QTY" min="1"
+                                   class="w-20 bg-slate-800 border border-slate-600 rounded-lg py-3 text-center font-bold text-white">
                             <button onclick="executeTrade('BUY')" class="bg-green-600 px-6 py-3 rounded-lg font-black hover:bg-green-500 transition">BUY</button>
                             <button onclick="executeTrade('SELL')" class="bg-red-600 px-6 py-3 rounded-lg font-black hover:bg-red-500 transition">SELL</button>
                         </div>
@@ -117,7 +130,8 @@
                         <h2 class="text-xl font-black uppercase tracking-tighter text-blue-400">Market Directory</h2>
                         <p id="sync-date-label" class="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Checking data freshness...</p>
                     </div>
-                    <input type="text" id="directory-search" onkeyup="filterDirectory()" placeholder="SEARCH DIRECTORY..." class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 w-full md:w-80 text-xs font-bold text-blue-400 uppercase outline-none focus:border-blue-500">
+                    <input type="text" id="directory-search" onkeyup="filterDirectory()" placeholder="SEARCH DIRECTORY..."
+                           class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 w-full md:w-80 text-xs font-bold text-blue-400 uppercase outline-none focus:border-blue-500">
                 </div>
                 <div class="overflow-x-auto max-h-[600px]">
                     <table class="w-full text-left text-xs">
@@ -139,13 +153,141 @@
     </div>
 
     <script>
-        const API_KEY = '1wvcKLPhqZxh9bsg5AIp2yfQuSCG_onK'; 
-        let currentUser = "";
-        let userData = { cash: 100000, holdings: {} }; 
-        let activeStock = { ticker: "", dates: [], prices: [], sma50: [], sma200: [] };
+        // =============================================================
+        //  JSONBIN CLOUD STORAGE
+        //  All portfolios are stored server-side, keyed by codename.
+        //  Works on any device, any browser, anywhere.
+        // =============================================================
+        const JSONBIN_API_KEY = '$2a$10$jvW3J3Oaj9M3QgycxWwpIefnVI6tdZpDGXxUz6o9vAo92JZV1RTDO';
+        const JSONBIN_BASE    = 'https://api.jsonbin.io/v3';
+
+        // In-memory map of codename → JSONBin bin ID, cached in localStorage
+        // so we don't have to search on every page load.
+        function getBinIdCache() {
+            try { return JSON.parse(localStorage.getItem('jb_bin_ids') || '{}'); } catch(e) { return {}; }
+        }
+        function setBinIdCache(cache) {
+            try { localStorage.setItem('jb_bin_ids', JSON.stringify(cache)); } catch(e) {}
+        }
+
+        // Find the bin ID for a given codename by searching JSONBin bins by name.
+        async function findBinByCodename(codename) {
+            const cache = getBinIdCache();
+            if (cache[codename]) return cache[codename];
+
+            // Search all bins for one named after this codename
+            const resp = await fetch(`${JSONBIN_BASE}/b?page=1`, {
+                headers: { 'X-Master-Key': JSONBIN_API_KEY }
+            });
+            if (!resp.ok) return null;
+            const data = await resp.json();
+            const bins = data?.result || [];
+            const match = bins.find(b => b.snippetMeta?.name === `portfolio_${codename}`);
+            if (match) {
+                cache[codename] = match.id;
+                setBinIdCache(cache);
+                return match.id;
+            }
+            return null;
+        }
+
+        // Load portfolio from JSONBin. Returns parsed object or null.
+        async function cloudLoad(codename) {
+            const binId = await findBinByCodename(codename);
+            if (!binId) return null;
+            const resp = await fetch(`${JSONBIN_BASE}/b/${binId}/latest`, {
+                headers: { 'X-Master-Key': JSONBIN_API_KEY }
+            });
+            if (!resp.ok) return null;
+            const data = await resp.json();
+            return data?.record || null;
+        }
+
+        // Save portfolio to JSONBin.
+        // If the bin exists → PUT (update). If not → POST (create new bin).
+        async function cloudSave(codename, portfolio) {
+            const cache = getBinIdCache();
+            let binId = cache[codename];
+
+            if (binId) {
+                // Update existing bin
+                const resp = await fetch(`${JSONBIN_BASE}/b/${binId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': JSONBIN_API_KEY
+                    },
+                    body: JSON.stringify(portfolio)
+                });
+                if (!resp.ok) throw new Error(`PUT failed: ${resp.status}`);
+            } else {
+                // Create new bin named after the codename
+                const resp = await fetch(`${JSONBIN_BASE}/b`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': JSONBIN_API_KEY,
+                        'X-Bin-Name': `portfolio_${codename}`,
+                        'X-Bin-Private': 'true'
+                    },
+                    body: JSON.stringify(portfolio)
+                });
+                if (!resp.ok) throw new Error(`POST failed: ${resp.status}`);
+                const data = await resp.json();
+                const newId = data?.metadata?.id;
+                if (newId) {
+                    cache[codename] = newId;
+                    setBinIdCache(cache);
+                }
+            }
+        }
+
+        // =============================================================
+        //  SAVE BANNER HELPERS
+        // =============================================================
+        let bannerTimer = null;
+        function showBanner(type, msg) {
+            const b = document.getElementById('cloud-banner');
+            b.className = type;
+            b.innerText = msg;
+            clearTimeout(bannerTimer);
+            if (type === 'saved') bannerTimer = setTimeout(() => { b.className = ''; }, 2500);
+        }
+
+        // =============================================================
+        //  DEBOUNCED SAVE  (waits 1s after last trade before hitting API)
+        // =============================================================
+        let saveTimer = null;
+        function scheduleSave() {
+            clearTimeout(saveTimer);
+            showBanner('saving', '⟳ SAVING TO CLOUD...');
+            saveTimer = setTimeout(async () => {
+                try {
+                    await cloudSave(currentUser, userData);
+                    // Also mirror to localStorage as an offline fallback
+                    try { localStorage.setItem(`portfolio_local_${currentUser}`, JSON.stringify(userData)); } catch(e) {}
+                    showBanner('saved', '✓ PORTFOLIO SAVED');
+                } catch(e) {
+                    console.error('Cloud save failed:', e);
+                    // Still persist locally so the session isn't lost
+                    try { localStorage.setItem(`portfolio_local_${currentUser}`, JSON.stringify(userData)); } catch(e2) {}
+                    showBanner('error', '⚠ CLOUD SAVE FAILED · SAVED LOCALLY');
+                }
+            }, 1000);
+        }
+
+        // =============================================================
+        //  APP STATE
+        // =============================================================
+        let currentUser = '';
+        let userData    = { cash: 100000, holdings: {} };
+        let activeStock = { ticker: '', dates: [], prices: [], sma50: [], sma200: [] };
         let batchPrices = {};
         let chartInstance = null;
 
+        // =============================================================
+        //  STOCK DATA
+        // =============================================================
         const sp100Data = [
             { t: "AAPL", n: "Apple Inc.", s: "Technology", d: "Consumer electronics, iPhone, Mac, services." },
             { t: "MSFT", n: "Microsoft Corp.", s: "Technology", d: "Software, Azure cloud, Office 365." },
@@ -249,65 +391,9 @@
             { t: "OXY", n: "Occidental Petroleum", s: "Energy", d: "Oil and gas exploration." }
         ];
 
-        // --- Dual-storage layer ---
-        // Uses window.storage (Claude artifact API) when available,
-        // falls back to localStorage so the file works as a standalone HTML.
-        const useCloudStorage = typeof window.storage !== 'undefined';
-
-        async function storageGet(key) {
-            if (useCloudStorage) {
-                try {
-                    const result = await window.storage.get(key);
-                    return result ? result.value : null;
-                } catch(e) { return null; }
-            } else {
-                return localStorage.getItem(key);
-            }
-        }
-
-        async function storageSet(key, value) {
-            if (useCloudStorage) {
-                try { await window.storage.set(key, value); } catch(e) { console.error('Cloud save failed:', e); }
-            } else {
-                try { localStorage.setItem(key, value); } catch(e) { console.error('localStorage save failed:', e); }
-            }
-        }
-        // --- End storage layer ---
-
-        async function login() {
-            const inputName = document.getElementById('codename').value.trim().toUpperCase();
-            if (!inputName) return;
-
-            currentUser = inputName;
-
-            // Load portfolio keyed by codename — works in both Claude and standalone browser
-            const saved = await storageGet(`portfolio_${currentUser}`);
-            userData = saved ? JSON.parse(saved) : { cash: 100000, holdings: {} };
-
-            document.getElementById('display-name').innerText = `SESSION: ${currentUser}`;
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('dashboard').classList.remove('hidden');
-
-            populateTickerDropdown();
-
-            // Wait for price sync before doing the first UI draw
-            await performDailyPriceSync();
-
-            updateUI();
-            renderList(sp100Data);
-            loadStock('AAPL');
-        }
-
-        async function savePortfolio() {
-            await storageSet(`portfolio_${currentUser}`, JSON.stringify(userData));
-        }
-
-        function populateTickerDropdown() {
-            const select = document.getElementById('ticker-select');
-            select.innerHTML = sp100Data.map(s => `<option value="${s.t}">${s.t} - ${s.n}</option>`).join('');
-        }
-
-        // Base prices sourced April 11, 2026
+        // =============================================================
+        //  BASE PRICES & SIMULATION (unchanged from v3)
+        // =============================================================
         const BASE_PRICES = {
             "AAPL":200,"MSFT":372,"NVDA":188,"GOOGL":154,"AMZN":182,
             "AVGO":178,"META":520,"TSLA":240,"BRK.B":505,"LLY":938,
@@ -331,7 +417,6 @@
             "EMR":115,"PANW":175,"SLB":38,"KLAC":680,"OXY":46
         };
 
-        // Seeded pseudo-random: same date always gives same prices
         function seededRand(seed) {
             let x = Math.sin(seed + 1) * 10000;
             return x - Math.floor(x);
@@ -342,15 +427,12 @@
         function simulatePriceForDate(ticker, dateStr) {
             const base = BASE_PRICES[ticker] || 100;
             const day = getDaysSinceEpoch(dateStr);
-            // Daily drift: small % move seeded by ticker+date
             let price = base;
-            const tickerSeed = ticker.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
-            // Walk forward from a fixed start date so prices compound naturally
+            const tickerSeed = ticker.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
             const startDay = getDaysSinceEpoch('2024-01-01');
             for (let d = startDay; d <= day; d++) {
                 const r = seededRand(d * 1000 + tickerSeed);
-                const move = (r - 0.48) * 0.025; // ~±1.25% daily, slight upward bias
-                price = price * (1 + move);
+                price = price * (1 + (r - 0.48) * 0.025);
             }
             return Math.round(price * 100) / 100;
         }
@@ -367,13 +449,65 @@
             return history;
         }
 
+        // =============================================================
+        //  LOGIN  — loads from cloud, falls back to local cache
+        // =============================================================
+        async function login() {
+            const inputName = document.getElementById('codename').value.trim().toUpperCase();
+            if (!inputName) return;
+
+            const btn = document.getElementById('login-btn');
+            const errEl = document.getElementById('login-error');
+            btn.innerText = 'CONNECTING...';
+            btn.disabled = true;
+            errEl.classList.add('hidden');
+
+            currentUser = inputName;
+
+            try {
+                // Try cloud first
+                const cloudData = await cloudLoad(currentUser);
+                if (cloudData) {
+                    userData = cloudData;
+                } else {
+                    // No cloud record → check local fallback
+                    const localData = localStorage.getItem(`portfolio_local_${currentUser}`);
+                    userData = localData ? JSON.parse(localData) : { cash: 100000, holdings: {} };
+                    // If brand new, save a fresh account to cloud immediately
+                    if (!localData) await cloudSave(currentUser, userData).catch(() => {});
+                }
+            } catch(e) {
+                console.error('Login cloud load failed:', e);
+                // Fall back to local cache gracefully
+                const localData = localStorage.getItem(`portfolio_local_${currentUser}`);
+                userData = localData ? JSON.parse(localData) : { cash: 100000, holdings: {} };
+                showBanner('offline', '⚠ OFFLINE MODE · USING LOCAL DATA');
+            }
+
+            document.getElementById('display-name').innerText = `SESSION: ${currentUser}`;
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+
+            populateTickerDropdown();
+            await performDailyPriceSync();
+            updateUI();
+            renderList(sp100Data);
+            loadStock('AAPL');
+
+            btn.innerText = 'ACCESS TERMINAL';
+            btn.disabled = false;
+        }
+
+        // =============================================================
+        //  PRICE SYNC  (localStorage cache for prices — fine per-device)
+        // =============================================================
         async function performDailyPriceSync() {
-            document.getElementById('sync-status').innerText = "SYNCING MARKET...";
+            document.getElementById('sync-status').innerText = 'SYNCING MARKET...';
             document.getElementById('sync-status').classList.add('sync-pulse');
 
             const today = new Date();
             const dateStr = today.toISOString().split('T')[0];
-            const cacheKey = `market_batch_v3_${dateStr}`;
+            const cacheKey = `market_batch_v4_${dateStr}`;
 
             const cachedData = localStorage.getItem(cacheKey);
             if (cachedData) {
@@ -385,7 +519,6 @@
             batchPrices = {};
             const tickers = sp100Data.map(s => s.t);
 
-            // Try live Yahoo Finance first (works when run locally in browser)
             try {
                 const symbols = tickers.join(',');
                 const resp = await Promise.race([
@@ -399,11 +532,8 @@
                 console.log('Live prices unavailable, using simulated prices');
             }
 
-            // Fill any missing tickers with simulated prices (always works)
             tickers.forEach(ticker => {
-                if (!batchPrices[ticker]) {
-                    batchPrices[ticker] = simulatePriceForDate(ticker, dateStr);
-                }
+                if (!batchPrices[ticker]) batchPrices[ticker] = simulatePriceForDate(ticker, dateStr);
             });
 
             localStorage.setItem(cacheKey, JSON.stringify(batchPrices));
@@ -411,21 +541,104 @@
         }
 
         function finalizeSync(dateStr) {
-            document.getElementById('sync-status').innerText = "DATA PERSISTED";
-            document.getElementById('sync-date-label').innerText = `Displaying Batch Data from ${dateStr}`;
+            document.getElementById('sync-status').innerText = 'DATA READY';
+            document.getElementById('sync-date-label').innerText = `Displaying batch data from ${dateStr}`;
             document.getElementById('effective-date-val').innerText = dateStr;
             setTimeout(() => document.getElementById('sync-status').classList.remove('sync-pulse'), 2000);
         }
 
+        function populateTickerDropdown() {
+            const select = document.getElementById('ticker-select');
+            select.innerHTML = sp100Data.map(s => `<option value="${s.t}">${s.t} – ${s.n}</option>`).join('');
+        }
+
+        // =============================================================
+        //  TRADING
+        // =============================================================
+        async function executeTrade(type) {
+            const qty = parseInt(document.getElementById('trade-qty').value) || 0;
+            const price = batchPrices[activeStock.ticker] || (activeStock.prices.length ? activeStock.prices.slice(-1)[0] : 0);
+
+            if (qty <= 0 || price <= 0 || !activeStock.ticker) return;
+
+            if (!userData.holdings[activeStock.ticker]) userData.holdings[activeStock.ticker] = { qty: 0, avgPrice: 0 };
+            const h = userData.holdings[activeStock.ticker];
+
+            if (type === 'BUY' && userData.cash >= qty * price) {
+                const totalCost = (h.qty * h.avgPrice) + (qty * price);
+                userData.cash -= qty * price;
+                h.qty += qty;
+                h.avgPrice = totalCost / h.qty;
+            } else if (type === 'SELL' && h.qty >= qty) {
+                userData.cash += qty * price;
+                h.qty -= qty;
+                if (h.qty === 0) delete userData.holdings[activeStock.ticker];
+            } else {
+                return; // invalid trade (insufficient cash or shares)
+            }
+
+            updateUI();
+            scheduleSave(); // debounced cloud save
+        }
+
+        // =============================================================
+        //  UI RENDERING
+        // =============================================================
+        function updateUI() {
+            document.getElementById('cash-balance').innerText = '$' + userData.cash.toLocaleString(undefined, { minimumFractionDigits: 2 });
+            let totalPortfolioVal = 0;
+            const list = document.getElementById('holdings-list');
+            list.innerHTML = '';
+
+            Object.entries(userData.holdings).forEach(([t, data]) => {
+                const currentPrice = batchPrices[t] || 0;
+                const currentVal = data.qty * currentPrice;
+                const change = currentVal - (data.qty * data.avgPrice);
+                totalPortfolioVal += currentVal;
+                list.innerHTML += `
+                    <tr onclick="loadStock('${t}'); switchTab('trade')" class="cursor-pointer hover:bg-slate-800 transition">
+                        <td class="py-3">
+                            <div class="font-black text-blue-400">${t}</div>
+                            <div class="text-[8px] text-slate-500 uppercase">${data.qty} shares</div>
+                        </td>
+                        <td class="py-3 text-right font-bold">$${currentVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td class="py-3 text-right font-bold ${change >= 0 ? 'text-green-400' : 'text-red-400'}">
+                            ${change >= 0 ? '+' : ''}${change.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                    </tr>`;
+            });
+
+            document.getElementById('stock-valuation').innerText = '$' + totalPortfolioVal.toLocaleString(undefined, { minimumFractionDigits: 2 });
+            document.getElementById('net-worth').innerText = '$' + (userData.cash + totalPortfolioVal).toLocaleString(undefined, { minimumFractionDigits: 2 });
+        }
+
+        function renderList(data) {
+            document.getElementById('sp500-table-body').innerHTML = data.map(s => {
+                const price = batchPrices[s.t];
+                const lastPrice = price ? '$' + price.toLocaleString(undefined, { minimumFractionDigits: 2 }) : 'SYNCING...';
+                return `
+                <tr class="border-b border-slate-800 hover:bg-slate-800/30">
+                    <td class="p-3 font-black text-blue-400">${s.t}</td>
+                    <td class="p-3 text-slate-300 font-medium">${s.n}</td>
+                    <td class="p-3 text-slate-500 font-bold text-[10px] uppercase">${s.s}</td>
+                    <td class="p-3 text-slate-400 italic text-[10px] leading-tight w-1/3">${s.d}</td>
+                    <td class="p-3 text-right font-mono font-bold">${lastPrice}</td>
+                    <td class="p-3 text-right"><button onclick="loadStock('${s.t}'); switchTab('trade')" class="text-blue-500 font-black text-[10px] hover:underline uppercase">Trade</button></td>
+                </tr>`;
+            }).join('');
+        }
+
+        // =============================================================
+        //  CHART & STOCK LOADING
+        // =============================================================
         async function loadStock(ticker) {
             if (!ticker) return;
             document.getElementById('ticker-select').value = ticker;
 
             const cacheKey = `history_${ticker}`;
-            let history = JSON.parse(localStorage.getItem(cacheKey));
+            let history = JSON.parse(localStorage.getItem(cacheKey) || 'null');
 
             if (!history) {
-                // Try live data first
                 try {
                     const toTs = Math.floor(Date.now() / 1000);
                     const fromTs = toTs - 365 * 24 * 3600;
@@ -445,9 +658,8 @@
                         })).filter(h => h.price != null);
                         localStorage.setItem(cacheKey, JSON.stringify(history));
                     }
-                } catch (e) { /* fall through to simulated */ }
+                } catch(e) {}
 
-                // Fall back to simulated history (always works)
                 if (!history) {
                     history = simulateHistory(ticker, 365);
                     localStorage.setItem(cacheKey, JSON.stringify(history));
@@ -456,10 +668,16 @@
 
             if (history && history.length) {
                 const prices = history.map(h => h.price);
-                activeStock = { ticker, dates: history.map(h => h.date), prices, sma50: calculateSMA(prices, 50), sma200: calculateSMA(prices, 200) };
+                activeStock = {
+                    ticker,
+                    dates: history.map(h => h.date),
+                    prices,
+                    sma50: calculateSMA(prices, 50),
+                    sma200: calculateSMA(prices, 200)
+                };
                 document.getElementById('trade-ticker-label').innerText = ticker;
                 const displayPrice = batchPrices[ticker] || prices.slice(-1)[0] || 0;
-                document.getElementById('current-price').innerText = '$' + displayPrice.toLocaleString(undefined, {minimumFractionDigits: 2});
+                document.getElementById('current-price').innerText = '$' + displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2 });
                 updateTrendRange('1Y');
                 updateUI();
             }
@@ -467,78 +685,6 @@
 
         function calculateSMA(data, period) {
             return data.map((_, i) => i < period - 1 ? null : data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period);
-        }
-
-        async function executeTrade(type) {
-            const qty = parseInt(document.getElementById('trade-qty').value) || 0;
-            const price = batchPrices[activeStock.ticker] || (activeStock.prices.length ? activeStock.prices.slice(-1)[0] : 0);
-            
-            if (qty <= 0 || price <= 0) return;
-
-            if (!userData.holdings[activeStock.ticker]) userData.holdings[activeStock.ticker] = { qty: 0, avgPrice: 0 };
-            const h = userData.holdings[activeStock.ticker];
-
-            if (type === 'BUY' && userData.cash >= qty * price) {
-                const totalCost = (h.qty * h.avgPrice) + (qty * price);
-                userData.cash -= qty * price;
-                h.qty += qty;
-                h.avgPrice = totalCost / h.qty;
-            } else if (type === 'SELL' && h.qty >= qty) {
-                userData.cash += qty * price;
-                h.qty -= qty;
-                if (h.qty === 0) delete userData.holdings[activeStock.ticker];
-            }
-            
-            // Save portfolio persistently across sessions
-            await savePortfolio();
-            updateUI();
-        }
-
-        function updateUI() {
-            document.getElementById('cash-balance').innerText = '$' + userData.cash.toLocaleString(undefined, {minimumFractionDigits: 2});
-            let totalPortfolioVal = 0;
-            const list = document.getElementById('holdings-list');
-            list.innerHTML = "";
-
-            Object.entries(userData.holdings).forEach(([t, data]) => {
-                const currentPrice = batchPrices[t] || 0;
-                const currentVal = data.qty * currentPrice;
-                const costBasis = data.qty * data.avgPrice;
-                const change = currentVal - costBasis;
-                totalPortfolioVal += currentVal;
-
-                list.innerHTML += `
-                    <tr onclick="loadStock('${t}'); switchTab('trade')" class="cursor-pointer hover:bg-slate-800 transition">
-                        <td class="py-3">
-                            <div class="font-black text-blue-400">${t}</div>
-                            <div class="text-[8px] text-slate-500 uppercase">${data.qty} SHARES</div>
-                        </td>
-                        <td class="py-3 text-right font-bold">$${currentVal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                        <td class="py-3 text-right font-bold ${change >= 0 ? 'text-green-400' : 'text-red-400'}">
-                            ${change >= 0 ? '+' : ''}${change.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                        </td>
-                    </tr>`;
-            });
-
-            document.getElementById('stock-valuation').innerText = '$' + totalPortfolioVal.toLocaleString(undefined, {minimumFractionDigits: 2});
-            document.getElementById('net-worth').innerText = '$' + (userData.cash + totalPortfolioVal).toLocaleString(undefined, {minimumFractionDigits: 2});
-        }
-
-        function renderList(data) {
-            document.getElementById('sp500-table-body').innerHTML = data.map(s => {
-                const price = batchPrices[s.t];
-                const lastPrice = price ? "$" + price.toLocaleString(undefined, {minimumFractionDigits: 2}) : "SYNCING...";
-
-                return `
-                <tr class="border-b border-slate-800 hover:bg-slate-800/30">
-                    <td class="p-3 font-black text-blue-400">${s.t}</td>
-                    <td class="p-3 text-slate-300 font-medium">${s.n}</td>
-                    <td class="p-3 text-slate-500 font-bold text-[10px] uppercase">${s.s}</td>
-                    <td class="p-3 text-slate-400 italic text-[10px] leading-tight w-1/3">${s.d}</td>
-                    <td class="p-3 text-right font-mono font-bold">${lastPrice}</td>
-                    <td class="p-3 text-right"><button onclick="loadStock('${s.t}'); switchTab('trade')" class="text-blue-500 font-black text-[10px] hover:underline uppercase">Trade</button></td>
-                </tr>`;
-            }).join('');
         }
 
         function updateTrendRange(range, btn) {
@@ -555,17 +701,17 @@
                 data: {
                     labels,
                     datasets: [
-                        { label: 'Price', data: p, borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, fill: true, backgroundColor: 'rgba(59, 130, 246, 0.05)' },
+                        { label: 'Price', data: p, borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, fill: true, backgroundColor: 'rgba(59,130,246,0.05)' },
                         { label: '50 SMA', data: s50, borderColor: '#fbbf24', borderWidth: 1, pointRadius: 0 },
                         { label: '200 SMA', data: s200, borderColor: '#ef4444', borderWidth: 1, pointRadius: 0 }
                     ]
                 },
-                options: { 
+                options: {
                     responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { display: true, labels: { color: '#94a3b8', font: { size: 10, weight: '800' } } } },
-                    scales: { 
-                        x: { ticks: { color: '#475569', maxTicksLimit: 8 }, grid: { display: false } }, 
-                        y: { grid: { color: '#1e293b' }, ticks: { color: '#475569' } } 
+                    scales: {
+                        x: { ticks: { color: '#475569', maxTicksLimit: 8 }, grid: { display: false } },
+                        y: { grid: { color: '#1e293b' }, ticks: { color: '#475569' } }
                     }
                 }
             });
