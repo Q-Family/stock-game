@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>S&P 100 | Smart-Sync Terminal v5</title>
+    <title>S&P 100 | Smart-Sync Terminal v6</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -43,7 +43,7 @@
     <div class="card p-8 w-full max-w-md text-center shadow-2xl border-blue-500/30">
         <h1 class="text-3xl font-black text-blue-400 mb-2 tracking-tighter uppercase">Market Insight</h1>
         <p class="text-slate-400 mb-1 text-sm italic">Secure Portfolio Terminal</p>
-        <p class="text-slate-600 mb-6 text-[10px] uppercase tracking-widest">v5 · Cloud Sync</p>
+        <p class="text-slate-600 mb-6 text-[10px] uppercase tracking-widest">v6 · Cloud Sync</p>
         <input type="text" id="codename" placeholder="ENTER CODENAME"
                oninput="this.value = this.value.toUpperCase()"
                onkeydown="if(event.key==='Enter') login()"
@@ -64,7 +64,7 @@
             <nav class="flex space-x-8 items-end">
                 <button onclick="switchTab('trade')" id="tab-trade" class="pb-1 text-xs font-black tab-active uppercase">Trade Desk</button>
                 <button onclick="switchTab('list')"  id="tab-list"  class="pb-1 text-xs font-black text-slate-500 hover:text-white uppercase transition">Company Directory</button>
-                <span class="text-[9px] font-bold text-slate-600 pb-1">v5</span>
+                <span class="text-[9px] font-bold text-slate-600 pb-1">v6</span>
             </nav>
             <div class="flex items-center gap-4">
                 <div id="sync-status" class="text-[9px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-500 uppercase tracking-tighter">OFFLINE</div>
@@ -163,126 +163,170 @@
 // =================================================================
 //  CONFIG
 // =================================================================
-const JBIN_KEY        = '$2a$10$jvW3J3Oaj9M3QgycxWwpIefnVI6tdZpDGXxUz6o9vAo92JZV1RTDO';
-const JBIN_BASE       = 'https://api.jsonbin.io/v3';
-const COLLECTION_ID   = '69e173be36566621a8c002aa';   // stock-game-portfolios
+const JBIN_KEY      = '$2a$10$CNFDK3j9QIkCy3MO5yxcQ.gD9OPRQCCRKEczGvO41wFZ7OzephNPq';
+const JBIN_BASE     = 'https://api.jsonbin.io/v3';
+const COLLECTION_ID = '69e173be36566621a8c002aa';
+
+// INDEX_BIN_ID: one master bin that maps codename → student bin ID.
+// Every browser on every device reads this to find a student's bin.
+// Set to empty string on first run — the app will create it and alert you.
+let INDEX_BIN_ID = '69e1c730856a68218942820b';
 
 // =================================================================
-//  JSONBIN HELPERS
-//  Strategy: each student = one bin inside the collection.
-//  Bin name = "portfolio_CODENAME"
-//  We cache codename→binId in localStorage so we only do the
-//  collection-list lookup ONCE per device, then go direct.
+//  LOW-LEVEL JSONBIN API
 // =================================================================
-
-function localCacheGet(codename) {
-    try { return JSON.parse(localStorage.getItem('jb_ids') || '{}')[codename] || null; }
-    catch(e) { return null; }
-}
-function localCacheSet(codename, binId) {
-    try {
-        const map = JSON.parse(localStorage.getItem('jb_ids') || '{}');
-        map[codename] = binId;
-        localStorage.setItem('jb_ids', JSON.stringify(map));
-    } catch(e) {}
-}
-function localPortfolioSet(codename, data) {
-    try { localStorage.setItem('portfolio_' + codename, JSON.stringify(data)); } catch(e) {}
-}
-function localPortfolioGet(codename) {
-    try {
-        const raw = localStorage.getItem('portfolio_' + codename);
-        return raw ? JSON.parse(raw) : null;
-    } catch(e) { return null; }
-}
-
-// Fetch all bins in our collection and find the one named for this codename.
-// Returns binId string or null.
-async function findBinInCollection(codename) {
-    const targetName = 'portfolio_' + codename;
-    const resp = await fetch(`${JBIN_BASE}/c/${COLLECTION_ID}/bins`, {
-        headers: { 'X-Master-Key': JBIN_KEY }
+async function apiFetch(path, method = 'GET', body = null) {
+    const headers = { 'X-Master-Key': JBIN_KEY };
+    if (body !== null) headers['Content-Type'] = 'application/json';
+    const resp = await fetch(JBIN_BASE + path, {
+        method,
+        headers,
+        body: body !== null ? JSON.stringify(body) : undefined
     });
-    if (!resp.ok) throw new Error('Collection fetch failed: ' + resp.status);
-    const bins = await resp.json();   // array of { record, snippetMeta, private, createdAt }
-    const match = bins.find(b => b.snippetMeta && b.snippetMeta.name === targetName);
-    return match ? match.record : null;  // match.record = the bin ID
+    if (!resp.ok) {
+        const err = await resp.text();
+        throw new Error(`JSONBin ${method} ${path} → ${resp.status}: ${err}`);
+    }
+    return resp.json();
 }
 
-// Read a bin by its ID. Returns parsed portfolio object or null.
+// =================================================================
+//  INDEX BIN  — maps { CODENAME: binId, ... }
+//  Lives at a fixed ID so any device can always find it.
+// =================================================================
+async function ensureIndexBin() {
+    if (INDEX_BIN_ID) return;
+
+    // Check local cache first
+    const cached = localStorage.getItem('jb_index_id');
+    if (cached) { INDEX_BIN_ID = cached; return; }
+
+    // First ever run — create the index bin and show ID on screen
+    showSetupBanner('⟳ Creating cloud index...');
+    const data = await apiFetch('/b', 'POST', { _index: true });
+    INDEX_BIN_ID = data.metadata.id;
+    localStorage.setItem('jb_index_id', INDEX_BIN_ID);
+    showSetupBanner(
+        '✅ INDEX BIN CREATED — paste this ID to Claude to hardcode it:\n' + INDEX_BIN_ID,
+        true
+    );
+}
+
+// Visible on-screen banner on the login page for the teacher setup step
+function showSetupBanner(msg, persist) {
+    let el = document.getElementById('setup-banner');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'setup-banner';
+        el.style.cssText = [
+            'position:fixed','top:0','left:0','right:0','z-index:9999',
+            'background:#1e3a5f','color:#93c5fd','font-size:13px',
+            'font-weight:700','padding:14px 20px','text-align:center',
+            'white-space:pre-wrap','word-break:break-all','line-height:1.6'
+        ].join(';');
+        document.body.prepend(el);
+    }
+    el.textContent = msg;
+    if (!persist) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
+}
+
+// Run index setup immediately when the page loads — before any login
+window.addEventListener('DOMContentLoaded', () => {
+    ensureIndexBin().catch(e => {
+        showSetupBanner('⚠ Could not reach JSONBin: ' + e.message, true);
+    });
+});
+
+async function readIndex() {
+    await ensureIndexBin();
+    const data = await apiFetch(`/b/${INDEX_BIN_ID}/latest`);
+    return data.record || {};
+}
+
+async function writeIndex(index) {
+    await ensureIndexBin();
+    await apiFetch(`/b/${INDEX_BIN_ID}`, 'PUT', index);
+}
+
+// =================================================================
+//  STUDENT BIN  — stores { cash, holdings }
+// =================================================================
 async function readBin(binId) {
-    const resp = await fetch(`${JBIN_BASE}/b/${binId}/latest`, {
-        headers: { 'X-Master-Key': JBIN_KEY }
-    });
-    if (!resp.ok) throw new Error('Read bin failed: ' + resp.status);
-    const data = await resp.json();
+    const data = await apiFetch(`/b/${binId}/latest`);
     return data.record || null;
 }
 
-// Create a new bin in the collection. Returns new binId.
-async function createBin(codename, portfolio) {
-    const resp = await fetch(`${JBIN_BASE}/b`, {
-        method: 'POST',
-        headers: {
-            'Content-Type':  'application/json',
-            'X-Master-Key':  JBIN_KEY,
-            'X-Bin-Name':    'portfolio_' + codename,
-            'X-Bin-Private': 'true',
-            'X-Collection-Id': COLLECTION_ID
-        },
-        body: JSON.stringify(portfolio)
-    });
-    if (!resp.ok) throw new Error('Create bin failed: ' + resp.status);
-    const data = await resp.json();
+async function createBin(portfolio) {
+    const data = await apiFetch('/b', 'POST', portfolio);
     return data.metadata.id;
 }
 
-// Update an existing bin by ID.
 async function updateBin(binId, portfolio) {
-    const resp = await fetch(`${JBIN_BASE}/b/${binId}`, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Master-Key': JBIN_KEY
-        },
-        body: JSON.stringify(portfolio)
-    });
-    if (!resp.ok) throw new Error('Update bin failed: ' + resp.status);
+    await apiFetch(`/b/${binId}`, 'PUT', portfolio);
 }
 
-// High-level load: find or create bin, return portfolio data.
+// =================================================================
+//  LOCAL MIRRORS  (speed + offline fallback — device-only)
+// =================================================================
+function localPortfolioSet(codename, data) {
+    try { localStorage.setItem('pf_' + codename, JSON.stringify(data)); } catch(e) {}
+}
+function localPortfolioGet(codename) {
+    try { const r = localStorage.getItem('pf_' + codename); return r ? JSON.parse(r) : null; }
+    catch(e) { return null; }
+}
+// Per-device bin ID cache — avoids re-reading index every login on same browser
+function localBinIdGet(codename) {
+    try { return JSON.parse(localStorage.getItem('jb_ids') || '{}')[codename] || null; }
+    catch(e) { return null; }
+}
+function localBinIdSet(codename, binId) {
+    try {
+        const m = JSON.parse(localStorage.getItem('jb_ids') || '{}');
+        m[codename] = binId; localStorage.setItem('jb_ids', JSON.stringify(m));
+    } catch(e) {}
+}
+
+// =================================================================
+//  HIGH-LEVEL CLOUD LOAD / SAVE
+// =================================================================
 async function cloudLoad(codename) {
-    let binId = localCacheGet(codename);
+    // 1. Check local bin-ID cache first (fast path for returning devices)
+    let binId = localBinIdGet(codename);
 
     if (!binId) {
-        // Not cached on this device — search the collection
-        binId = await findBinInCollection(codename);
-        if (binId) localCacheSet(codename, binId);
+        // 2. Read the master index — works on ANY device, ANY browser
+        const index = await readIndex();
+        binId = index[codename] || null;
+        if (binId) localBinIdSet(codename, binId);
     }
 
-    if (binId) {
-        const portfolio = await readBin(binId);
-        if (portfolio) {
-            localPortfolioSet(codename, portfolio);  // mirror locally
-            return portfolio;
-        }
-    }
+    if (!binId) return null;   // genuinely new student
 
-    // No existing bin — brand new student
-    return null;
+    // 3. Fetch their portfolio
+    const portfolio = await readBin(binId);
+    if (portfolio) localPortfolioSet(codename, portfolio);
+    return portfolio;
 }
 
-// High-level save: update existing bin or create a new one.
 async function cloudSave(codename, portfolio) {
-    let binId = localCacheGet(codename);
+    let binId = localBinIdGet(codename);
 
     if (binId) {
+        // Fast path — bin already known, just update it
         await updateBin(binId, portfolio);
     } else {
-        binId = await createBin(codename, portfolio);
-        localCacheSet(codename, binId);
+        // New student — create bin, register in index
+        binId = await createBin(portfolio);
+        localBinIdSet(codename, binId);
+
+        // Update the master index so other devices can find this student
+        const index = await readIndex();
+        index[codename] = binId;
+        await writeIndex(index);
     }
-    localPortfolioSet(codename, portfolio);  // keep local mirror in sync
+
+    localPortfolioSet(codename, portfolio);
 }
 
 // =================================================================
@@ -543,7 +587,7 @@ async function performDailyPriceSync() {
     document.getElementById('sync-status').classList.add('sync-pulse');
 
     const dateStr  = new Date().toISOString().split('T')[0];
-    const cacheKey = 'market_v5_' + dateStr;
+    const cacheKey = 'market_v6_' + dateStr;
     const cached   = localStorage.getItem(cacheKey);
 
     if (cached) { batchPrices = JSON.parse(cached); finalizeSync(dateStr); return; }
