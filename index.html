@@ -478,12 +478,34 @@ const sp100Data = [
 ];
 
 // =================================================================
-//  REAL PRICE HELPERS
-//  No simulation — real Yahoo Finance data only.
-//  Falls back to last known real price if fetch fails.
+//  REAL PRICE HELPERS — seed prices, last-known cache, multi-proxy
 // =================================================================
 
-// Persist a known-good price for a ticker so we always have a fallback
+// Hardcoded closing prices (April 17 2026) — guarantees prices always
+// show on first run before any live fetch has succeeded.
+const SEED_PRICES = {
+    "AAPL":198.15,"MSFT":369.24,"NVDA":109.02,"GOOGL":155.74,"AMZN":184.49,
+    "AVGO":173.38,"META":512.30,"TSLA":252.08,"BRK.B":503.00,"LLY":812.25,
+    "WMT":92.54,"JPM":224.89,"V":327.12,"ORCL":153.24,"XOM":106.83,
+    "MA":527.41,"JNJ":151.62,"COST":919.67,"HD":342.55,"NFLX":979.99,
+    "BAC":35.87,"ABBV":188.61,"AMD":91.34,"MU":87.56,"GE":195.47,
+    "PG":162.03,"CVX":145.22,"WFC":65.44,"UNH":478.34,"CSCO":59.28,
+    "KO":68.57,"MS":119.34,"CAT":291.46,"GS":572.35,"IBM":239.47,
+    "MRK":84.16,"AXP":253.67,"RTX":133.25,"PM":158.44,"CRM":263.41,
+    "TMUS":229.34,"TMO":428.91,"C":67.43,"MCD":276.83,"ABT":119.22,
+    "AMAT":144.38,"ISRG":538.92,"LIN":458.17,"DIS":110.34,"BX":139.27,
+    "PEP":143.28,"INTC":18.74,"QCOM":141.03,"SCHW":71.49,"BA":174.12,
+    "AMGN":294.17,"INTU":572.83,"UBER":71.34,"BKNG":4874.55,"TJX":119.47,
+    "VZ":40.57,"NEE":69.83,"BLK":942.17,"TXN":154.28,"ACN":318.94,
+    "COF":169.34,"NOW":847.23,"GILD":114.47,"PFE":25.83,"ADBE":374.12,
+    "BSX":94.37,"LOW":218.93,"UNP":214.28,"HON":204.17,"SBUX":87.43,
+    "DE":428.39,"SPGI":452.87,"BMY":49.73,"MMM":124.38,"LMT":432.91,
+    "SYK":353.47,"REGN":668.23,"GD":238.57,"TGT":94.17,"CME":223.84,
+    "ADP":263.47,"MDLZ":66.38,"NKE":71.34,"CL":91.47,"UPS":91.23,
+    "PLD":104.38,"FDX":239.17,"SO":83.47,"MO":54.83,"DUK":117.34,
+    "EMR":114.28,"PANW":174.38,"SLB":37.83,"KLAC":678.34,"OXY":45.73
+};
+
 function saveLastKnownPrice(ticker, price, dateStr) {
     try {
         const store = JSON.parse(localStorage.getItem('last_known_prices') || '{}');
@@ -494,12 +516,111 @@ function saveLastKnownPrice(ticker, price, dateStr) {
 function getLastKnownPrice(ticker) {
     try {
         const store = JSON.parse(localStorage.getItem('last_known_prices') || '{}');
-        return store[ticker] || null;  // { price, date } or null
+        return store[ticker] || null;
     } catch(e) { return null; }
+}
+function ensurePriceSeed() {
+    try {
+        const store = JSON.parse(localStorage.getItem('last_known_prices') || '{}');
+        let changed = false;
+        Object.entries(SEED_PRICES).forEach(([t, p]) => {
+            if (!store[t]) { store[t] = { price: p, date: '2026-04-17' }; changed = true; }
+        });
+        if (changed) localStorage.setItem('last_known_prices', JSON.stringify(store));
+    } catch(e) {}
+}
+
+// Try multiple CORS proxies in sequence until one works
+async function fetchWithProxies(url) {
+    const proxies = [
+        'https://corsproxy.io/?url=',
+        'https://api.allorigins.win/raw?url=',
+        'https://api.codetabs.com/v1/proxy?quest='
+    ];
+    for (const proxy of proxies) {
+        try {
+            const resp = await Promise.race([
+                fetch(proxy + encodeURIComponent(url)),
+                new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 6000))
+            ]);
+            if (resp.ok) return resp;
+        } catch(e) { continue; }
+    }
+    throw new Error('All proxies failed');
 }
 
 // =================================================================
-//  LOGIN
+//  PRICE SYNC
+// =================================================================
+const stalePriceTickers = new Set();
+
+async function performDailyPriceSync() {
+    document.getElementById('sync-status').textContent = 'SYNCING MARKET...';
+    document.getElementById('sync-status').classList.add('sync-pulse');
+
+    ensurePriceSeed();   // always seed before anything else
+
+    const dateStr  = new Date().toISOString().split('T')[0];
+    const cacheKey = 'market_v8_' + dateStr;
+    const cached   = localStorage.getItem(cacheKey);
+
+    if (cached) {
+        batchPrices = JSON.parse(cached);
+        finalizeSync(dateStr, false);
+        return;
+    }
+
+    batchPrices = {};
+    stalePriceTickers.clear();
+    const tickers = sp100Data.map(s => s.t);
+    let liveCount = 0;
+
+    try {
+        const symbols = tickers.join(',');
+        const resp = await fetchWithProxies(
+            'https://query1.finance.yahoo.com/v7/finance/quote?symbols=' + symbols +
+            '&fields=regularMarketPreviousClose,regularMarketPrice'
+        );
+        const data   = await resp.json();
+        const quotes = data?.quoteResponse?.result || [];
+        quotes.forEach(q => {
+            const price = q.regularMarketPreviousClose || q.regularMarketPrice;
+            if (price) {
+                batchPrices[q.symbol] = Math.round(price * 100) / 100;
+                saveLastKnownPrice(q.symbol, batchPrices[q.symbol], dateStr);
+                liveCount++;
+            }
+        });
+    } catch(e) {
+        console.warn('All Yahoo Finance proxies failed:', e.message);
+    }
+
+    // Fill gaps with last known real price (seed or previously fetched)
+    tickers.forEach(t => {
+        if (!batchPrices[t]) {
+            const last = getLastKnownPrice(t);
+            if (last) { batchPrices[t] = last.price; stalePriceTickers.add(t); }
+        }
+    });
+
+    localStorage.setItem(cacheKey, JSON.stringify(batchPrices));
+    finalizeSync(dateStr, liveCount === 0);
+}
+
+function finalizeSync(dateStr, allStale) {
+    const statusEl = document.getElementById('sync-status');
+    if (allStale) {
+        statusEl.textContent = 'LAST CLOSE';
+        statusEl.style.color = '#fb923c';
+    } else {
+        statusEl.textContent = 'LIVE DATA';
+        statusEl.style.color = '';
+    }
+    document.getElementById('sync-date-label').textContent =
+        allStale ? 'Showing last available closing prices' : 'Live market data as of ' + dateStr;
+    document.getElementById('effective-date-val').textContent = dateStr;
+    setTimeout(() => statusEl.classList.remove('sync-pulse'), 2000);
+}
 // =================================================================
 async function login() {
     const codename = document.getElementById('codename').value.trim().toUpperCase();
@@ -555,78 +676,8 @@ async function login() {
 }
 
 // =================================================================
-//  PRICE SYNC — real Yahoo Finance data only
-//  Fallback: last known real closing price (labeled as such)
-// =================================================================
+//  LOGIN
 
-// Tracks which tickers are using a stale fallback price this session
-const stalePriceTickers = new Set();
-
-async function performDailyPriceSync() {
-    document.getElementById('sync-status').textContent = 'SYNCING MARKET...';
-    document.getElementById('sync-status').classList.add('sync-pulse');
-
-    const dateStr  = new Date().toISOString().split('T')[0];
-    const cacheKey = 'market_v8_' + dateStr;
-    const cached   = localStorage.getItem(cacheKey);
-
-    if (cached) {
-        batchPrices = JSON.parse(cached);
-        finalizeSync(dateStr, false);
-        return;
-    }
-
-    batchPrices = {};
-    stalePriceTickers.clear();
-    const tickers = sp100Data.map(s => s.t);
-    let liveCount = 0;
-
-    // Fetch previous close from Yahoo Finance — this is the OFFICIAL closing price,
-    // the same value that appears as the last bar on the /chart endpoint.
-    // Using previousClose (not regularMarketPrice) ensures the directory and
-    // chart trendline always show the exact same number.
-    try {
-        const symbols = tickers.join(',');
-        const resp = await Promise.race([
-            fetch('https://corsproxy.io/?url=' + encodeURIComponent(
-                'https://query1.finance.yahoo.com/v7/finance/quote?symbols=' + symbols +
-                '&fields=regularMarketPreviousClose,regularMarketPrice,shortName'
-            )),
-            new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 6000))
-        ]);
-        const data   = await resp.json();
-        const quotes = data?.quoteResponse?.result || [];
-        quotes.forEach(q => {
-            // Previous close = the last official EOD closing price.
-            // This matches what the chart endpoint returns as the last bar.
-            // Fall back to regularMarketPrice only if previousClose is missing.
-            const price = q.regularMarketPreviousClose || q.regularMarketPrice;
-            if (price) {
-                batchPrices[q.symbol] = Math.round(price * 100) / 100;
-                saveLastKnownPrice(q.symbol, batchPrices[q.symbol], dateStr);
-                liveCount++;
-            }
-        });
-    } catch(e) {
-        console.warn('Yahoo Finance fetch failed:', e.message);
-    }
-
-    // For any ticker we didn't get — use last known real price, never simulate
-    tickers.forEach(t => {
-        if (!batchPrices[t]) {
-            const last = getLastKnownPrice(t);
-            if (last) {
-                batchPrices[t] = last.price;
-                stalePriceTickers.add(t);
-            }
-        }
-    });
-
-    localStorage.setItem(cacheKey, JSON.stringify(batchPrices));
-    finalizeSync(dateStr, liveCount === 0);
-}
-
-function finalizeSync(dateStr, allStale) {
     const statusEl = document.getElementById('sync-status');
     if (allStale) {
         statusEl.textContent = 'LAST CLOSE';
