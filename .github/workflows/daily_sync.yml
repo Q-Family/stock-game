@@ -1,1 +1,32 @@
+name: Daily Stock Price Sync
 
+on:
+  schedule:
+    # This runs at 22:00 UTC (5:00 PM EST) every Monday through Friday
+    - cron: '0 22 * * 1-5'
+  workflow_dispatch:
+    # This adds a "Run Now" button so you can test it manually
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Axios (the tool that fetches data)
+        run: npm install axios
+
+      - name: Run the Sync Script
+        env:
+          # This connects the Secrets you saved earlier to the script
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          JSONBIN_MASTER_KEY: ${{ secrets.JSONBIN_MASTER_KEY }}
+          JSONBIN_PRICE_BIN_ID: ${{ secrets.JSONBIN_PRICE_BIN_ID }}
+        run: node sync_prices.js
