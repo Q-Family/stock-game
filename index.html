@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>S&P 100 | Smart-Sync Terminal v7</title>
+    <title>S&P 100 | Smart-Sync Terminal v8</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -43,7 +43,7 @@
     <div class="card p-8 w-full max-w-md text-center shadow-2xl border-blue-500/30">
         <h1 class="text-3xl font-black text-blue-400 mb-2 tracking-tighter uppercase">Market Insight</h1>
         <p class="text-slate-400 mb-1 text-sm italic">Secure Portfolio Terminal</p>
-        <p class="text-slate-600 mb-6 text-[10px] uppercase tracking-widest">v7 · Real Prices · Cloud Sync</p>
+        <p class="text-slate-600 mb-6 text-[10px] uppercase tracking-widest">v8 · Real Prices · Cloud Sync</p>
         <input type="text" id="codename" placeholder="ENTER CODENAME"
                oninput="this.value = this.value.toUpperCase()"
                onkeydown="if(event.key==='Enter') login()"
@@ -63,8 +63,8 @@
         <div class="max-w-7xl mx-auto flex justify-between items-center">
             <nav class="flex space-x-8 items-end">
                 <button onclick="switchTab('trade')" id="tab-trade" class="pb-1 text-xs font-black tab-active uppercase">Trade Desk</button>
-                <button onclick="switchTab('list')"  id="tab-list"  class="pb-1 text-xs font-black text-slate-500 hover:text-white uppercase transition">Company Directory</button>
-                <span class="text-[9px] font-bold text-slate-600 pb-1">v7</span>
+                <button onclick="switchTab('list')"  id="tab-list"  class="pb-1 text-xs font-black text-slate-500 hover:text-white uppercase transition">Company Profile</button>
+                <span class="text-[9px] font-bold text-slate-600 pb-1">v8</span>
             </nav>
             <div class="flex items-center gap-4">
                 <div id="sync-status" class="text-[9px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-500 uppercase tracking-tighter">OFFLINE</div>
@@ -138,10 +138,10 @@
         <div id="section-list" class="hidden card p-6">
             <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
                 <div>
-                    <h2 class="text-xl font-black uppercase tracking-tighter text-blue-400">Market Directory</h2>
+                    <h2 class="text-xl font-black uppercase tracking-tighter text-blue-400">Company Profile</h2>
                     <p id="sync-date-label" class="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Checking data freshness...</p>
                 </div>
-                <input type="text" id="directory-search" onkeyup="filterDirectory()" placeholder="SEARCH DIRECTORY..."
+                <input type="text" id="directory-search" onkeyup="filterDirectory()" placeholder="SEARCH COMPANIES..."
                        class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 w-full md:w-80 text-xs font-bold text-blue-400 uppercase outline-none focus:border-blue-500">
             </div>
             <div class="overflow-x-auto max-h-[600px]">
@@ -567,7 +567,7 @@ async function performDailyPriceSync() {
     document.getElementById('sync-status').classList.add('sync-pulse');
 
     const dateStr  = new Date().toISOString().split('T')[0];
-    const cacheKey = 'market_v7_' + dateStr;
+    const cacheKey = 'market_v8_' + dateStr;
     const cached   = localStorage.getItem(cacheKey);
 
     if (cached) {
@@ -581,24 +581,29 @@ async function performDailyPriceSync() {
     const tickers = sp100Data.map(s => s.t);
     let liveCount = 0;
 
-    // Fetch real prices from Yahoo Finance
+    // Fetch previous close from Yahoo Finance — this is the OFFICIAL closing price,
+    // the same value that appears as the last bar on the /chart endpoint.
+    // Using previousClose (not regularMarketPrice) ensures the directory and
+    // chart trendline always show the exact same number.
     try {
         const symbols = tickers.join(',');
         const resp = await Promise.race([
             fetch('https://corsproxy.io/?url=' + encodeURIComponent(
                 'https://query1.finance.yahoo.com/v7/finance/quote?symbols=' + symbols +
-                '&fields=regularMarketPrice,regularMarketPreviousClose'
+                '&fields=regularMarketPreviousClose,regularMarketPrice,shortName'
             )),
             new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 6000))
         ]);
         const data   = await resp.json();
         const quotes = data?.quoteResponse?.result || [];
         quotes.forEach(q => {
-            // Prefer live price, fall back to previous close — both are real
-            const price = q.regularMarketPrice || q.regularMarketPreviousClose;
+            // Previous close = the last official EOD closing price.
+            // This matches what the chart endpoint returns as the last bar.
+            // Fall back to regularMarketPrice only if previousClose is missing.
+            const price = q.regularMarketPreviousClose || q.regularMarketPrice;
             if (price) {
-                batchPrices[q.symbol] = price;
-                saveLastKnownPrice(q.symbol, price, dateStr);
+                batchPrices[q.symbol] = Math.round(price * 100) / 100;
+                saveLastKnownPrice(q.symbol, batchPrices[q.symbol], dateStr);
                 liveCount++;
             }
         });
@@ -612,9 +617,8 @@ async function performDailyPriceSync() {
             const last = getLastKnownPrice(t);
             if (last) {
                 batchPrices[t] = last.price;
-                stalePriceTickers.add(t);  // mark so UI can label it
+                stalePriceTickers.add(t);
             }
-            // If no last known price at all, leave it absent — UI shows '---'
         }
     });
 
@@ -791,14 +795,8 @@ async function loadStock(ticker) {
     }
 
     if (history && history.length) {
-        // Pin the last point to batchPrice so chart end always matches directory
-        const currentPrice = batchPrices[ticker];
-        if (currentPrice) {
-            const todayLabel = new Date().toLocaleDateString();
-            const withoutToday = history.filter(h => h.date !== todayLabel);
-            history = [...withoutToday, { date: todayLabel, price: currentPrice }];
-        }
-
+        // batchPrices now uses regularMarketPreviousClose — the exact same
+        // value as the chart's last bar. No pinning needed; they already match.
         const prices = history.map(h => h.price);
         activeStock  = {
             ticker,
