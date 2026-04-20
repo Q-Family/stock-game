@@ -1,87 +1,79 @@
 const axios = require('axios');
 
-// These are pulled from your GitHub Secrets automatically
-const POLYGON_KEY = process.env.POLYGON_API_KEY;
-const JBIN_KEY = process.env.JSONBIN_MASTER_KEY;
+const POLYGON_KEY  = process.env.POLYGON_API_KEY;
+const JBIN_KEY     = process.env.JSONBIN_MASTER_KEY;
 const PRICE_BIN_ID = process.env.JSONBIN_PRICE_BIN_ID;
 
-// Your full list of 100 Tickers (ensure these match your app exactly)
+// Must match sp100Data[].t in your HTML exactly
 const TICKERS = [
-    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "BRK.B", "LLY", "AVGO",
-    "V", "JPM", "WMT", "MA", "UNH", "XOM", "ORCL", "COST", "HD", "PG",
-    "ABTV", "ACN", "ADBE", "ADI", "ADM", "ADP", "ADSK", "AEE", "AEP", "AES",
-    // ... Add all 100 tickers here to ensure they are all updated in one go
+    "AAPL","MSFT","NVDA","GOOGL","AMZN","AVGO","META","TSLA","BRK.B","LLY",
+    "WMT","JPM","V","ORCL","XOM","MA","JNJ","COST","HD","NFLX",
+    "BAC","ABBV","AMD","MU","GE","PG","CVX","WFC","UNH","CSCO",
+    "KO","MS","CAT","GS","IBM","MRK","AXP","RTX","PM","CRM",
+    "TMUS","TMO","C","MCD","ABT","AMAT","ISRG","LIN","DIS","BX",
+    "PEP","INTC","QCOM","SCHW","BA","AMGN","INTU","UBER","BKNG","TJX",
+    "VZ","NEE","BLK","TXN","ACN","COF","NOW","GILD","PFE","ADBE",
+    "BSX","LOW","UNP","HON","SBUX","DE","SPGI","BMY","MMM","LMT",
+    "SYK","REGN","GD","TGT","CME","ADP","MDLZ","NKE","CL","UPS",
+    "PLD","FDX","SO","MO","DUK","EMR","PANW","SLB","KLAC","OXY"
 ];
 
 async function getMarketData() {
     let attempts = 0;
-    let success = false;
-    let data = null;
     let dateToFetch = new Date();
 
-    // Loop backwards up to 4 days to find the most recent trading day
-    while (attempts < 4 && !success) {
+    // Walk backwards up to 4 days to find the most recent trading day
+    while (attempts < 4) {
         dateToFetch.setDate(dateToFetch.getDate() - 1);
         const dateStr = dateToFetch.toISOString().split('T')[0];
-        
-        console.log(`Checking market availability for: ${dateStr}...`);
-        
+        console.log(`Checking market data for: ${dateStr}...`);
+
         try {
             const url = `https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/${dateStr}?adjusted=true&apiKey=${POLYGON_KEY}`;
             const resp = await axios.get(url);
-            
+
             if (resp.data.results && resp.data.results.length > 0) {
-                console.log(`Success! Found data for ${dateStr}`);
-                data = {
-                    date: dateStr,
-                    results: resp.data.results
-                };
-                success = true;
+                console.log(`Found data for ${dateStr} (${resp.data.results.length} stocks)`);
+                return { date: dateStr, results: resp.data.results };
             } else {
-                console.log(`No data for ${dateStr} (Market likely closed).`);
+                console.log(`No data for ${dateStr} — market likely closed`);
             }
         } catch (err) {
-            console.log(`Error on ${dateStr}: ${err.message}`);
+            console.log(`Error fetching ${dateStr}: ${err.message}`);
         }
         attempts++;
     }
-    return data;
+    return null;
 }
 
 async function runSync() {
     try {
         const marketData = await getMarketData();
-        if (!marketData) throw new Error("Could not find any recent market data.");
+        if (!marketData) throw new Error('Could not find any recent market data after 4 attempts');
 
-        // Create a clean "Price Map"
-        const priceMap = {};
+        // Build price map — only include tickers our app uses
+        const prices = {};
         marketData.results.forEach(item => {
             if (TICKERS.includes(item.T)) {
-                priceMap[item.T] = item.c; // 'c' is the Closing Price in Polygon's API
+                prices[item.T] = item.c;  // c = closing price
             }
         });
 
-        console.log(`Filtered ${Object.keys(priceMap).length} tickers from the bulk set.`);
+        console.log(`Matched ${Object.keys(prices).length} of ${TICKERS.length} tickers`);
 
-        // Push to JSONBin
-        await axios.put(`https://api.jsonbin.io/v3/b/${PRICE_BIN_ID}`, 
-            { 
-                lastUpdated: new Date().toLocaleString(),
-                marketDate: marketData.date, 
-                prices: priceMap 
-            },
-            { 
-                headers: { 
-                    'X-Master-Key': JBIN_KEY,
-                    'Content-Type': 'application/json'
-                } 
-            }
+        // Write to JSONBin in the exact shape the HTML expects:
+        // { date: "2026-04-19", prices: { "AAPL": 198.15, ... } }
+        await axios.put(
+            `https://api.jsonbin.io/v3/b/${PRICE_BIN_ID}`,
+            { date: marketData.date, prices },
+            { headers: { 'X-Master-Key': JBIN_KEY, 'Content-Type': 'application/json' } }
         );
 
-        console.log("Master Price Bin updated successfully.");
+        console.log(`Price bin updated — ${Object.keys(prices).length} prices written for ${marketData.date}`);
+
     } catch (error) {
-        console.error("Critical Sync Failure:", error.message);
-        process.exit(1); // Tells GitHub the action failed
+        console.error('Sync failed:', error.message);
+        process.exit(1);
     }
 }
 
