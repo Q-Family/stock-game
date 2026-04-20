@@ -1,11 +1,12 @@
 name: Daily Stock Price Sync
+
 on:
   schedule:
-    - cron: '0 22 * * 1-5' # Runs at 5:00 PM EST (10:00 PM UTC) Mon-Fri
-  workflow_dispatch: # Allows you to trigger it manually for testing
+    - cron: '0 22 * * 1-5'  # 5:00 PM EST (22:00 UTC) Mon-Fri
+  workflow_dispatch:          # Allows manual trigger for testing
 
 jobs:
-  build:
+  sync:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -16,10 +17,10 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: npm install axios
 
-      - name: Run Sync Script
+      - name: Run price sync
         env:
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
           JSONBIN_MASTER_KEY: ${{ secrets.JSONBIN_MASTER_KEY }}
