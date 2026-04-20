@@ -1,32 +1,30 @@
-name: Daily Stock Price Sync
+async function performDailyPriceSync() {
+    try {
+        const response = await fetch(`https://api.jsonbin.io/v3/b/${PRICE_BIN_ID}/latest`, {
+            headers: { 'X-Master-Key': JBIN_KEY }
+        });
+        const data = await response.json();
+        const latestPrices = data.record?.prices;
 
-on:
-  schedule:
-    # This runs at 22:00 UTC (5:00 PM EST) every Monday through Friday
-    - cron: '0 22 * * 1-5'
-  workflow_dispatch:
-    # This adds a "Run Now" button so you can test it manually
+        if (!latestPrices || Object.keys(latestPrices).length === 0) {
+            console.warn('Price bin empty — using seed prices');
+            ensurePriceSeed();
+            return;
+        }
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+        const today = new Date().toISOString().split('T')[0];
+        sp100Data.forEach(stock => {
+            if (latestPrices[stock.t]) {
+                stock.lastClose = latestPrices[stock.t];
+                saveLastKnownPrice(stock.t, latestPrices[stock.t], today);
+            }
+        });
 
-    steps:
-      - name: Checkout repository code
-        uses: actions/checkout@v3
+        console.log('Prices successfully updated from vault.');
+        updateUI(); // refresh holdings panel with new prices
 
-      - name: Setup Node.js environment
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Install Axios (the tool that fetches data)
-        run: npm install axios
-
-      - name: Run the Sync Script
-        env:
-          # This connects the Secrets you saved earlier to the script
-          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
-          JSONBIN_MASTER_KEY: ${{ secrets.JSONBIN_MASTER_KEY }}
-          JSONBIN_PRICE_BIN_ID: ${{ secrets.JSONBIN_PRICE_BIN_ID }}
-        run: node sync_prices.js
+    } catch (err) {
+        console.error('Sync failed — using seed prices:', err);
+        ensurePriceSeed();
+    }
+}
