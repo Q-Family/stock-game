@@ -540,7 +540,6 @@ function ensurePriceSeed() {
 //  Falls back to seed prices if bin is empty or unreachable.
 // =================================================================
 async function performDailyPriceSync() {
-    // Skip if no price bin configured yet
     if (!PRICE_BIN_ID) {
         console.log('No PRICE_BIN_ID set — using seed prices');
         ensurePriceSeed();
@@ -555,7 +554,7 @@ async function performDailyPriceSync() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data         = await response.json();
-        const latestPrices = data.record?.prices;   // { "AAPL": 198.15, "MSFT": 369.24, ... }
+        const latestPrices = data.record?.prices;
 
         if (!latestPrices || Object.keys(latestPrices).length === 0) {
             console.warn('Price bin empty — falling back to seed prices');
@@ -563,18 +562,20 @@ async function performDailyPriceSync() {
             return;
         }
 
-        // Write all prices into last_known_prices so the entire app can use them
-        const today = new Date().toISOString().split('T')[0];
-        const syncDate = data.record?.date || today;   // sync script should include the date it ran
+        // Write ALL prices in one single localStorage operation (not 100 separate writes)
+        const syncDate = data.record?.date || new Date().toISOString().split('T')[0];
+        const store    = JSON.parse(localStorage.getItem('last_known_prices') || '{}');
 
         sp100Data.forEach(stock => {
             if (latestPrices[stock.t]) {
-                stock.lastClose = latestPrices[stock.t];                        // in-memory
-                saveLastKnownPrice(stock.t, latestPrices[stock.t], syncDate);   // localStorage
+                store[stock.t]      = { price: latestPrices[stock.t], date: syncDate };
+                stock.lastClose     = latestPrices[stock.t];
             }
         });
 
-        console.log(`Prices synced from vault (${Object.keys(latestPrices).length} stocks, dated ${syncDate})`);
+        localStorage.setItem('last_known_prices', JSON.stringify(store));
+
+        console.log(`Prices synced — ${Object.keys(latestPrices).length} stocks dated ${syncDate}`);
         document.getElementById('sync-status').textContent = 'SYNCED';
         document.getElementById('sync-status').style.color = '#4ade80';
 
@@ -582,6 +583,35 @@ async function performDailyPriceSync() {
         console.error('Price sync failed — using seed prices:', err.message);
         ensurePriceSeed();
     }
+}
+
+// Harvest any previously cached chart history to fill in last_known_prices.
+// This ensures holdings panel shows real prices for every stock the student
+// has ever viewed, even before the GitHub Action has run.
+function harvestChartCache() {
+    const store   = JSON.parse(localStorage.getItem('last_known_prices') || '{}');
+    const today   = new Date().toISOString().split('T')[0];
+    let   changed = false;
+
+    sp100Data.forEach(stock => {
+        // Find the most recent cached history for this ticker
+        const keys = Object.keys(localStorage)
+            .filter(k => k.startsWith('history_' + stock.t + '_'))
+            .sort();
+        if (!keys.length) return;
+
+        const history = JSON.parse(localStorage.getItem(keys[keys.length - 1]) || 'null');
+        if (!history || !history.length) return;
+
+        const lastEntry = history[history.length - 1];
+        // Only update if this is newer than what we already have
+        if (!store[stock.t] || lastEntry.date > (store[stock.t].date || '')) {
+            store[stock.t] = { price: lastEntry.price, date: lastEntry.date };
+            changed = true;
+        }
+    });
+
+    if (changed) localStorage.setItem('last_known_prices', JSON.stringify(store));
 }
 
 // Try multiple CORS proxies in sequence until one works
@@ -653,6 +683,8 @@ async function login() {
 
     try {
         populateTickerDropdown();
+        ensurePriceSeed();       // seed prices as baseline
+        harvestChartCache();     // overlay any real prices from previously fetched charts
         updateUI();
 
         msgEl.style.color = '#60a5fa';
