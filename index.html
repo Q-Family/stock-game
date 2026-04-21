@@ -157,7 +157,7 @@ const COLLECTION_ID = '69e173be36566621a8c002aa';
 
 // PRICE_BIN_ID: the bin your daily sync script writes all 100 prices into.
 // Set this to the bin ID your sync.js creates on first run.
-const PRICE_BIN_ID  = '69e6c79e856a682189560999';   // <-- paste your price bin ID here after running sync.js once
+const PRICE_BIN_ID  = '';   // <-- paste your price bin ID here after running sync.js once
 
 let INDEX_BIN_ID = '69e1c730856a68218942820b';
 
@@ -579,28 +579,18 @@ async function fetchWithProxies(url) {
         'https://api.allorigins.win/raw?url=',
         'https://api.codetabs.com/v1/proxy?quest='
     ];
-    const errors = [];
     for (const proxy of proxies) {
         try {
-            const proxyUrl = proxy + encodeURIComponent(url);
             const resp = await Promise.race([
-                fetch(proxyUrl),
-                new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 10000))
+                fetch(proxy + encodeURIComponent(url)),
+                new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 6000))
             ]);
-            // Log exact status for debugging
-            console.log(`Proxy ${proxy} → status ${resp.status}`);
             if (resp.ok) return resp;
-            // Read error body for diagnosis
-            const body = await resp.text().catch(() => '(unreadable)');
-            errors.push(`${proxy} → ${resp.status}: ${body.slice(0, 120)}`);
         } catch(e) {
-            errors.push(`${proxy} → ${e.message}`);
             continue;
         }
     }
-    // Show all errors visibly on screen so we can diagnose
-    showSetupBanner('⚠ All proxies failed for:\n' + url.slice(0,80) + '\n\n' + errors.join('\n'), true);
-    throw new Error('All proxies failed: ' + errors.join(' | '));
+    throw new Error('All proxies failed');
 }
 
 // =================================================================
@@ -649,16 +639,23 @@ async function login() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('dashboard').classList.remove('hidden');
 
-    populateTickerDropdown();
-    updateUI();
-    document.getElementById('sync-status').textContent = 'SYNCING...';
-    document.getElementById('sync-status').classList.add('sync-pulse');
-    await performDailyPriceSync();
-    document.getElementById('sync-status').classList.remove('sync-pulse');
-    await loadStock('AAPL');
-
-    btn.disabled    = false;
-    btn.textContent = 'ACCESS TERMINAL';
+    try {
+        populateTickerDropdown();
+        updateUI();
+        document.getElementById('sync-status').textContent = 'SYNCING...';
+        document.getElementById('sync-status').classList.add('sync-pulse');
+        await performDailyPriceSync();
+        document.getElementById('sync-status').classList.remove('sync-pulse');
+        await loadStock('AAPL');
+    } catch(e) {
+        console.error('Dashboard init error:', e);
+        ensurePriceSeed();
+        document.getElementById('sync-status').textContent = 'OFFLINE';
+        document.getElementById('sync-status').classList.remove('sync-pulse');
+    } finally {
+        btn.disabled    = false;
+        btn.textContent = 'ACCESS TERMINAL';
+    }
 }
 
 function populateTickerDropdown() {
