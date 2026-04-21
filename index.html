@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>S&P 100 | Smart-Sync Terminal v8</title>
+    <title>S&P 100 | Smart-Sync Terminal v11</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -43,7 +43,7 @@
     <div class="card p-8 w-full max-w-md text-center shadow-2xl border-blue-500/30">
         <h1 class="text-3xl font-black text-blue-400 mb-2 tracking-tighter uppercase">Market Insight</h1>
         <p class="text-slate-400 mb-1 text-sm italic">Secure Portfolio Terminal</p>
-        <p class="text-slate-600 mb-6 text-[10px] uppercase tracking-widest">v8 · Real Prices · Cloud Sync</p>
+        <p class="text-slate-600 mb-6 text-[10px] uppercase tracking-widest">v11 · Daily Price Sync · Cloud Sync</p>
         <input type="text" id="codename" placeholder="ENTER CODENAME"
                oninput="this.value = this.value.toUpperCase()"
                onkeydown="if(event.key==='Enter') login()"
@@ -62,9 +62,8 @@
     <header class="p-4 bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
             <nav class="flex space-x-8 items-end">
-                <button onclick="switchTab('trade')" id="tab-trade" class="pb-1 text-xs font-black tab-active uppercase">Trade Desk</button>
-                <button onclick="switchTab('list')"  id="tab-list"  class="pb-1 text-xs font-black text-slate-500 hover:text-white uppercase transition">Company Profile</button>
-                <span class="text-[9px] font-bold text-slate-600 pb-1">v8</span>
+                <span class="pb-1 text-xs font-black text-blue-400 uppercase">Trade Desk</span>
+                <span class="text-[9px] font-bold text-slate-600 pb-1">v11</span>
             </nav>
             <div class="flex items-center gap-4">
                 <div id="sync-status" class="text-[9px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-500 uppercase tracking-tighter">OFFLINE</div>
@@ -76,8 +75,8 @@
 
     <main class="max-w-7xl mx-auto p-4 lg:p-6 w-full flex-1">
 
-        <!-- TRADE TAB -->
-        <div id="section-trade" class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <!-- TRADE DESK -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
             <div class="lg:col-span-1 space-y-6">
                 <div class="card p-6 bg-slate-900 border-blue-500/20">
                     <p class="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Net Worth</p>
@@ -107,7 +106,7 @@
                     </div>
                     <div class="flex items-end gap-4">
                         <div class="hidden md:block text-right">
-                            <p class="text-[8px] font-black text-slate-500 uppercase tracking-widest">Price Effective Date</p>
+                            <p class="text-[8px] font-black text-slate-500 uppercase tracking-widest">Price Date</p>
                             <p id="effective-date-val" class="text-[10px] font-bold text-blue-400">---</p>
                         </div>
                         <div class="flex bg-slate-900 p-1 rounded-lg border border-slate-700 h-10">
@@ -122,7 +121,7 @@
                 <div class="bg-slate-900 p-6 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-center gap-6">
                     <div class="text-center md:text-left">
                         <p id="trade-ticker-label" class="text-[10px] text-slate-500 font-black uppercase tracking-widest">Ready</p>
-                        <p id="current-price" class="text-4xl font-black text-white">$0.00</p>
+                        <p id="current-price" class="text-4xl font-black text-white">---</p>
                     </div>
                     <div class="flex gap-2">
                         <input type="number" id="trade-qty" placeholder="QTY" min="1"
@@ -131,29 +130,18 @@
                         <button onclick="executeTrade('SELL')" class="bg-red-600   px-6 py-3 rounded-lg font-black hover:bg-red-500   transition">SELL</button>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- DIRECTORY TAB -->
-        <div id="section-list" class="hidden card p-6">
-            <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
-                <div>
-                    <h2 class="text-xl font-black uppercase tracking-tighter text-blue-400">Company Profile</h2>
-                    <p id="sync-date-label" class="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Checking data freshness...</p>
+                <!-- Stock summary — shown when a stock is selected -->
+                <div id="stock-summary" class="hidden mt-4 bg-slate-900 rounded-xl border border-slate-700 p-5">
+                    <div class="flex items-start gap-4">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span id="summary-name" class="text-sm font-black text-white"></span>
+                                <span id="summary-sector" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded bg-slate-800 text-blue-400 border border-blue-500/20"></span>
+                            </div>
+                            <p id="summary-desc" class="text-slate-400 text-xs leading-relaxed"></p>
+                        </div>
+                    </div>
                 </div>
-                <input type="text" id="directory-search" onkeyup="filterDirectory()" placeholder="SEARCH COMPANIES..."
-                       class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 w-full md:w-80 text-xs font-bold text-blue-400 uppercase outline-none focus:border-blue-500">
-            </div>
-            <div class="overflow-x-auto max-h-[600px]">
-                <table class="w-full text-left text-xs">
-                    <thead class="sticky top-0 bg-slate-800 z-10">
-                        <tr class="text-slate-400 text-[10px] uppercase font-black border-b border-slate-700">
-                            <th class="p-3">Ticker</th><th class="p-3">Company</th><th class="p-3">Sector</th>
-                            <th class="p-3">Profile</th><th class="p-3 text-right">Last Close</th><th class="p-3"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="sp500-table-body"></tbody>
-                </table>
             </div>
         </div>
     </main>
@@ -167,9 +155,10 @@ const JBIN_KEY      = '$2a$10$CNFDK3j9QIkCy3MO5yxcQ.gD9OPRQCCRKEczGvO41wFZ7Ozeph
 const JBIN_BASE     = 'https://api.jsonbin.io/v3';
 const COLLECTION_ID = '69e173be36566621a8c002aa';
 
-// INDEX_BIN_ID: one master bin that maps codename → student bin ID.
-// Every browser on every device reads this to find a student's bin.
-// Set to empty string on first run — the app will create it and alert you.
+// PRICE_BIN_ID: the bin your daily sync script writes all 100 prices into.
+// Set this to the bin ID your sync.js creates on first run.
+const PRICE_BIN_ID  = '69e6c79e856a682189560999';   // <-- paste your price bin ID here after running sync.js once
+
 let INDEX_BIN_ID = '69e1c730856a68218942820b';
 
 // =================================================================
@@ -368,8 +357,12 @@ function scheduleSave() {
 let currentUser  = '';
 let userData     = { cash: 100000, holdings: {} };
 let activeStock  = { ticker: '', dates: [], prices: [], sma50: [], sma200: [] };
-let batchPrices  = {};
 let chartInstance = null;
+
+// currentPrice: the last closing price from the chart — single source of truth
+function getCurrentPrice() {
+    return activeStock.prices.length ? activeStock.prices[activeStock.prices.length - 1] : 0;
+}
 
 // =================================================================
 //  STOCK DATA
@@ -530,6 +523,55 @@ function ensurePriceSeed() {
     } catch(e) {}
 }
 
+// =================================================================
+//  DAILY PRICE SYNC — reads from the JSONBin price bin written by sync.js
+//  Falls back to seed prices if bin is empty or unreachable.
+// =================================================================
+async function performDailyPriceSync() {
+    // Skip if no price bin configured yet
+    if (!PRICE_BIN_ID) {
+        console.log('No PRICE_BIN_ID set — using seed prices');
+        ensurePriceSeed();
+        return;
+    }
+
+    try {
+        const response = await fetch(`${JBIN_BASE}/b/${PRICE_BIN_ID}/latest`, {
+            headers: { 'X-Master-Key': JBIN_KEY }
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data         = await response.json();
+        const latestPrices = data.record?.prices;   // { "AAPL": 198.15, "MSFT": 369.24, ... }
+
+        if (!latestPrices || Object.keys(latestPrices).length === 0) {
+            console.warn('Price bin empty — falling back to seed prices');
+            ensurePriceSeed();
+            return;
+        }
+
+        // Write all prices into last_known_prices so the entire app can use them
+        const today = new Date().toISOString().split('T')[0];
+        const syncDate = data.record?.date || today;   // sync script should include the date it ran
+
+        sp100Data.forEach(stock => {
+            if (latestPrices[stock.t]) {
+                stock.lastClose = latestPrices[stock.t];                        // in-memory
+                saveLastKnownPrice(stock.t, latestPrices[stock.t], syncDate);   // localStorage
+            }
+        });
+
+        console.log(`Prices synced from vault (${Object.keys(latestPrices).length} stocks, dated ${syncDate})`);
+        document.getElementById('sync-status').textContent = 'SYNCED';
+        document.getElementById('sync-status').style.color = '#4ade80';
+
+    } catch(err) {
+        console.error('Price sync failed — using seed prices:', err.message);
+        ensurePriceSeed();
+    }
+}
+
 // Try multiple CORS proxies in sequence until one works
 async function fetchWithProxies(url) {
     const proxies = [
@@ -537,90 +579,32 @@ async function fetchWithProxies(url) {
         'https://api.allorigins.win/raw?url=',
         'https://api.codetabs.com/v1/proxy?quest='
     ];
+    const errors = [];
     for (const proxy of proxies) {
         try {
+            const proxyUrl = proxy + encodeURIComponent(url);
             const resp = await Promise.race([
-                fetch(proxy + encodeURIComponent(url)),
-                new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 6000))
+                fetch(proxyUrl),
+                new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 10000))
             ]);
+            // Log exact status for debugging
+            console.log(`Proxy ${proxy} → status ${resp.status}`);
             if (resp.ok) return resp;
-        } catch(e) { continue; }
-    }
-    throw new Error('All proxies failed');
-}
-
-// =================================================================
-//  PRICE SYNC
-// =================================================================
-const stalePriceTickers = new Set();
-
-async function performDailyPriceSync() {
-    document.getElementById('sync-status').textContent = 'SYNCING MARKET...';
-    document.getElementById('sync-status').classList.add('sync-pulse');
-
-    ensurePriceSeed();   // always seed before anything else
-
-    const dateStr  = new Date().toISOString().split('T')[0];
-    const cacheKey = 'market_v8_' + dateStr;
-    const cached   = localStorage.getItem(cacheKey);
-
-    if (cached) {
-        batchPrices = JSON.parse(cached);
-        finalizeSync(dateStr, false);
-        return;
-    }
-
-    batchPrices = {};
-    stalePriceTickers.clear();
-    const tickers = sp100Data.map(s => s.t);
-    let liveCount = 0;
-
-    try {
-        const symbols = tickers.join(',');
-        const resp = await fetchWithProxies(
-            'https://query1.finance.yahoo.com/v7/finance/quote?symbols=' + symbols +
-            '&fields=regularMarketPreviousClose,regularMarketPrice'
-        );
-        const data   = await resp.json();
-        const quotes = data?.quoteResponse?.result || [];
-        quotes.forEach(q => {
-            const price = q.regularMarketPreviousClose || q.regularMarketPrice;
-            if (price) {
-                batchPrices[q.symbol] = Math.round(price * 100) / 100;
-                saveLastKnownPrice(q.symbol, batchPrices[q.symbol], dateStr);
-                liveCount++;
-            }
-        });
-    } catch(e) {
-        console.warn('All Yahoo Finance proxies failed:', e.message);
-    }
-
-    // Fill gaps with last known real price (seed or previously fetched)
-    tickers.forEach(t => {
-        if (!batchPrices[t]) {
-            const last = getLastKnownPrice(t);
-            if (last) { batchPrices[t] = last.price; stalePriceTickers.add(t); }
+            // Read error body for diagnosis
+            const body = await resp.text().catch(() => '(unreadable)');
+            errors.push(`${proxy} → ${resp.status}: ${body.slice(0, 120)}`);
+        } catch(e) {
+            errors.push(`${proxy} → ${e.message}`);
+            continue;
         }
-    });
-
-    localStorage.setItem(cacheKey, JSON.stringify(batchPrices));
-    finalizeSync(dateStr, liveCount === 0);
-}
-
-function finalizeSync(dateStr, allStale) {
-    const statusEl = document.getElementById('sync-status');
-    if (allStale) {
-        statusEl.textContent = 'LAST CLOSE';
-        statusEl.style.color = '#fb923c';
-    } else {
-        statusEl.textContent = 'LIVE DATA';
-        statusEl.style.color = '';
     }
-    document.getElementById('sync-date-label').textContent =
-        allStale ? 'Showing last available closing prices' : 'Live market data as of ' + dateStr;
-    document.getElementById('effective-date-val').textContent = dateStr;
-    setTimeout(() => statusEl.classList.remove('sync-pulse'), 2000);
+    // Show all errors visibly on screen so we can diagnose
+    showSetupBanner('⚠ All proxies failed for:\n' + url.slice(0,80) + '\n\n' + errors.join('\n'), true);
+    throw new Error('All proxies failed: ' + errors.join(' | '));
 }
+
+// =================================================================
+//  LOGIN
 // =================================================================
 async function login() {
     const codename = document.getElementById('codename').value.trim().toUpperCase();
@@ -666,30 +650,15 @@ async function login() {
     document.getElementById('dashboard').classList.remove('hidden');
 
     populateTickerDropdown();
-    await performDailyPriceSync();
     updateUI();
-    renderList(sp100Data);
-    loadStock('AAPL');
+    document.getElementById('sync-status').textContent = 'SYNCING...';
+    document.getElementById('sync-status').classList.add('sync-pulse');
+    await performDailyPriceSync();
+    document.getElementById('sync-status').classList.remove('sync-pulse');
+    await loadStock('AAPL');
 
     btn.disabled    = false;
     btn.textContent = 'ACCESS TERMINAL';
-}
-
-// =================================================================
-//  LOGIN
-
-    const statusEl = document.getElementById('sync-status');
-    if (allStale) {
-        statusEl.textContent = 'LAST CLOSE';
-        statusEl.style.color = '#fb923c';
-    } else {
-        statusEl.textContent = 'LIVE DATA';
-        statusEl.style.color = '';
-    }
-    document.getElementById('sync-date-label').textContent =
-        allStale ? 'Showing last available closing prices' : 'Live market data as of ' + dateStr;
-    document.getElementById('effective-date-val').textContent = dateStr;
-    setTimeout(() => statusEl.classList.remove('sync-pulse'), 2000);
 }
 
 function populateTickerDropdown() {
@@ -698,11 +667,14 @@ function populateTickerDropdown() {
 }
 
 // =================================================================
-//  TRADING
+//  TRADING  — price comes from chart's last bar only
 // =================================================================
 async function executeTrade(type) {
-    const qty   = parseInt(document.getElementById('trade-qty').value) || 0;
-    const price = batchPrices[activeStock.ticker] || (activeStock.prices.length ? activeStock.prices.slice(-1)[0] : 0);
+    const qty = parseInt(document.getElementById('trade-qty').value) || 0;
+    // Use live chart price if available, otherwise last-known price
+    const livePrice = getCurrentPrice();
+    const known     = getLastKnownPrice(activeStock.ticker);
+    const price     = livePrice || (known ? known.price : 0);
     if (qty <= 0 || price <= 0 || !activeStock.ticker) return;
 
     if (!userData.holdings[activeStock.ticker])
@@ -726,7 +698,7 @@ async function executeTrade(type) {
 }
 
 // =================================================================
-//  UI
+//  UI  — holdings valued at each stock's last chart price
 // =================================================================
 function updateUI() {
     document.getElementById('cash-balance').textContent =
@@ -737,20 +709,22 @@ function updateUI() {
     list.innerHTML = '';
 
     Object.entries(userData.holdings).forEach(([t, h]) => {
-        const cp  = batchPrices[t] || 0;
-        const val = h.qty * cp;
-        const chg = val - (h.qty * h.avgPrice);
-        totalVal += val;
+        const known = getLastKnownPrice(t);
+        const cp    = known ? known.price : 0;
+        const val   = h.qty * cp;
+        const chg   = val - (h.qty * h.avgPrice);
+        totalVal   += val;
+        const valStr = cp ? '$' + val.toLocaleString(undefined,{minimumFractionDigits:2}) : '---';
+        const chgStr = cp ? (chg>=0?'+':'') + chg.toLocaleString(undefined,{minimumFractionDigits:2}) : '---';
         list.innerHTML += `
-            <tr onclick="loadStock('${t}');switchTab('trade')" class="cursor-pointer hover:bg-slate-800 transition">
+            <tr onclick="loadStock('${t}')" class="cursor-pointer hover:bg-slate-800 transition">
                 <td class="py-3">
                     <div class="font-black text-blue-400">${t}</div>
                     <div class="text-[8px] text-slate-500 uppercase">${h.qty} shares</div>
+                    ${known ? `<div class="text-[8px] text-slate-600">${known.date}</div>` : ''}
                 </td>
-                <td class="py-3 text-right font-bold">$${val.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
-                <td class="py-3 text-right font-bold ${chg>=0?'text-green-400':'text-red-400'}">
-                    ${chg>=0?'+':''}${chg.toLocaleString(undefined,{minimumFractionDigits:2})}
-                </td>
+                <td class="py-3 text-right font-bold">${valStr}</td>
+                <td class="py-3 text-right font-bold ${chg>=0?'text-green-400':'text-red-400'}">${chgStr}</td>
             </tr>`;
     });
 
@@ -760,59 +734,53 @@ function updateUI() {
         '$' + (userData.cash + totalVal).toLocaleString(undefined, { minimumFractionDigits: 2 });
 }
 
-function renderList(data) {
-    document.getElementById('sp500-table-body').innerHTML = data.map(s => {
-        const p = batchPrices[s.t];
-        const isStale = stalePriceTickers.has(s.t);
-        let priceCell;
-        if (!p) {
-            priceCell = '<span class="text-slate-600">---</span>';
-        } else if (isStale) {
-            priceCell = `<span class="text-amber-400">$${p.toLocaleString(undefined,{minimumFractionDigits:2})}</span>
-                         <div class="text-[8px] text-amber-600 uppercase">Last close</div>`;
-        } else {
-            priceCell = `$${p.toLocaleString(undefined,{minimumFractionDigits:2})}`;
-        }
-        return `<tr class="border-b border-slate-800 hover:bg-slate-800/30">
-            <td class="p-3 font-black text-blue-400">${s.t}</td>
-            <td class="p-3 text-slate-300 font-medium">${s.n}</td>
-            <td class="p-3 text-slate-500 font-bold text-[10px] uppercase">${s.s}</td>
-            <td class="p-3 text-slate-400 italic text-[10px] leading-tight w-1/3">${s.d}</td>
-            <td class="p-3 text-right font-mono font-bold">${priceCell}</td>
-            <td class="p-3 text-right">
-                <button onclick="loadStock('${s.t}');switchTab('trade')"
-                        class="text-blue-500 font-black text-[10px] hover:underline uppercase">Trade</button>
-            </td>
-        </tr>`;
-    }).join('');
-}
+// =================================================================
+//  CHART & STOCK LOADING
+// =================================================================
 
-// =================================================================
-//  CHART
-// =================================================================
+// Request ID prevents stale async fetches from overwriting a newer selection
+let loadRequestId = 0;
+
 async function loadStock(ticker) {
     if (!ticker) return;
     document.getElementById('ticker-select').value = ticker;
 
-    // Date-stamp the cache key so history refreshes each day
+    const thisRequest = ++loadRequestId;
+
+    // Show ticker label and summary immediately — before any branching
+    document.getElementById('trade-ticker-label').textContent = ticker;
+
+    const info = sp100Data.find(s => s.t === ticker);
+    if (info) {
+        document.getElementById('summary-name').textContent   = info.n;
+        document.getElementById('summary-sector').textContent = info.s;
+        document.getElementById('summary-desc').textContent   = info.d;
+        document.getElementById('stock-summary').classList.remove('hidden');
+    }
+
+    ensurePriceSeed();
     const today    = new Date().toISOString().split('T')[0];
     const cacheKey = 'history_' + ticker + '_' + today;
-    let history = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+    let history    = JSON.parse(localStorage.getItem(cacheKey) || 'null');
 
     if (!history) {
-        // Clear any old undated cache entries for this ticker
+        // Show loading state only when network call is needed
+        document.getElementById('current-price').textContent = '···';
+        document.getElementById('effective-date-val').textContent = '···';
+        document.getElementById('sync-status').textContent = 'LOADING...';
+        document.getElementById('sync-status').style.color = '';
+        document.getElementById('sync-status').classList.add('sync-pulse');
+
         Object.keys(localStorage)
-            .filter(k => k.startsWith('history_' + ticker + '_'))
+            .filter(k => k.startsWith('history_' + ticker + '_') && k !== cacheKey)
             .forEach(k => localStorage.removeItem(k));
 
         try {
             const toTs   = Math.floor(Date.now() / 1000);
-            const fromTs = toTs - 365 * 24 * 3600;
+            const fromTs = toTs - (2 * 365 * 24 * 3600);
             const url    = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&period1=${fromTs}&period2=${toTs}`;
-            const resp   = await Promise.race([
-                fetch('https://corsproxy.io/?url=' + encodeURIComponent(url)),
-                new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 6000))
-            ]);
+            const resp   = await fetchWithProxies(url);
+            if (thisRequest !== loadRequestId) return;
             const data   = await resp.json();
             const result = data?.chart?.result?.[0];
             if (result) {
@@ -822,34 +790,30 @@ async function loadStock(ticker) {
                 })).filter(h => h.price != null);
                 localStorage.setItem(cacheKey, JSON.stringify(history));
             }
-        } catch(e) {}
+        } catch(e) {
+            console.warn('Live fetch failed:', e.message);
+        }
 
-        // If live fetch failed, try to load any previously cached history for this ticker
+        document.getElementById('sync-status').classList.remove('sync-pulse');
+
         if (!history) {
             const prevKey = Object.keys(localStorage)
                 .filter(k => k.startsWith('history_' + ticker + '_'))
-                .sort().pop();   // most recent cached date
+                .sort().pop();
             if (prevKey) history = JSON.parse(localStorage.getItem(prevKey) || 'null');
-        }
-
-        // If still nothing — no chart data available
-        if (!history) {
-            document.getElementById('trade-ticker-label').textContent = ticker;
-            const p = batchPrices[ticker];
-            const isStale = stalePriceTickers.has(ticker);
-            document.getElementById('current-price').textContent =
-                p ? '$' + p.toLocaleString(undefined,{minimumFractionDigits:2}) : '---';
-            document.getElementById('effective-date-val').textContent =
-                isStale ? 'Last close' : today;
-            return;
         }
     }
 
+    if (thisRequest !== loadRequestId) return;
+
     if (history && history.length) {
-        // batchPrices now uses regularMarketPreviousClose — the exact same
-        // value as the chart's last bar. No pinning needed; they already match.
-        const prices = history.map(h => h.price);
-        activeStock  = {
+        const prices    = history.map(h => h.price);
+        const lastPrice = prices[prices.length - 1];
+        const lastDate  = history[history.length - 1].date;
+
+        saveLastKnownPrice(ticker, lastPrice, lastDate);
+
+        activeStock = {
             ticker,
             dates:  history.map(h => h.date),
             prices,
@@ -857,17 +821,33 @@ async function loadStock(ticker) {
             sma200: calcSMA(prices, 200)
         };
 
-        const isStale = stalePriceTickers.has(ticker);
-        document.getElementById('trade-ticker-label').textContent =
-            ticker + (isStale ? '  ·  LAST CLOSE' : '');
-        const dp = batchPrices[ticker] || prices.slice(-1)[0] || 0;
+        // Price = last bar of chart, always
         document.getElementById('current-price').textContent =
-            '$' + dp.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        document.getElementById('effective-date-val').textContent =
-            isStale ? 'Last close' : today;
-        updateTrendRange('1Y');
-        updateUI();
+            '$' + lastPrice.toLocaleString(undefined, { minimumFractionDigits: 2 });
+        document.getElementById('effective-date-val').textContent = lastDate;
+        document.getElementById('sync-status').textContent = 'LIVE DATA';
+        document.getElementById('sync-status').style.color = '';
+
+        // Defer chart render by one frame so canvas is ready after prior destroy
+        setTimeout(() => updateTrendRange('1Y'), 0);
+
+    } else {
+        const known = getLastKnownPrice(ticker);
+        if (known) {
+            document.getElementById('current-price').textContent =
+                '$' + known.price.toLocaleString(undefined, { minimumFractionDigits: 2 });
+            document.getElementById('effective-date-val').textContent = known.date;
+            document.getElementById('sync-status').textContent = 'LAST KNOWN';
+            document.getElementById('sync-status').style.color = '#fb923c';
+        } else {
+            document.getElementById('current-price').textContent = '---';
+            document.getElementById('effective-date-val').textContent = 'No data';
+            document.getElementById('sync-status').textContent = 'NO DATA';
+            document.getElementById('sync-status').style.color = '#f87171';
+        }
     }
+
+    updateUI();
 }
 
 function calcSMA(data, period) {
@@ -908,19 +888,6 @@ function renderChart(labels, p, s50, s200) {
             }
         }
     });
-}
-
-function switchTab(tab) {
-    document.getElementById('section-trade').classList.toggle('hidden', tab !== 'trade');
-    document.getElementById('section-list').classList.toggle('hidden',  tab !== 'list');
-    document.getElementById('tab-trade').classList.toggle('tab-active', tab === 'trade');
-    document.getElementById('tab-list').classList.toggle('tab-active',  tab === 'list');
-    if (tab === 'list') renderList(sp100Data);
-}
-
-function filterDirectory() {
-    const q = document.getElementById('directory-search').value.toUpperCase();
-    renderList(sp100Data.filter(s => s.t.includes(q) || s.n.toUpperCase().includes(q)));
 }
 </script>
 </body>
