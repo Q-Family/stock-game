@@ -661,9 +661,11 @@ async function login() {
         document.getElementById('sync-status').classList.add('sync-pulse');
         await performDailyPriceSync();
         document.getElementById('sync-status').classList.remove('sync-pulse');
+        updateUI();   // refresh holdings with freshly synced prices
 
         msgEl.textContent = 'Step 3/4 — loading chart...';
         await loadStock('AAPL');
+        updateUI();   // final refresh after chart prices are cached
 
         msgEl.textContent = 'Step 4/4 — done ✓';
     } catch(e) {
