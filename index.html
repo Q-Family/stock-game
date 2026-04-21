@@ -162,21 +162,33 @@ const PRICE_BIN_ID  = '';   // <-- paste your price bin ID here after running sy
 let INDEX_BIN_ID = '69e1c730856a68218942820b';
 
 // =================================================================
-//  LOW-LEVEL JSONBIN API
+//  LOW-LEVEL JSONBIN API  — 8 second timeout on every call
 // =================================================================
 async function apiFetch(path, method = 'GET', body = null) {
     const headers = { 'X-Master-Key': JBIN_KEY };
     if (body !== null) headers['Content-Type'] = 'application/json';
-    const resp = await fetch(JBIN_BASE + path, {
-        method,
-        headers,
-        body: body !== null ? JSON.stringify(body) : undefined
-    });
-    if (!resp.ok) {
-        const err = await resp.text();
-        throw new Error(`JSONBin ${method} ${path} → ${resp.status}: ${err}`);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+
+    try {
+        const resp = await fetch(JBIN_BASE + path, {
+            method,
+            headers,
+            body: body !== null ? JSON.stringify(body) : undefined,
+            signal: controller.signal
+        });
+        clearTimeout(timer);
+        if (!resp.ok) {
+            const err = await resp.text();
+            throw new Error(`JSONBin ${method} ${path} → ${resp.status}: ${err}`);
+        }
+        return resp.json();
+    } catch(e) {
+        clearTimeout(timer);
+        if (e.name === 'AbortError') throw new Error(`JSONBin timeout: ${method} ${path}`);
+        throw e;
     }
-    return resp.json();
 }
 
 // =================================================================
@@ -610,23 +622,23 @@ async function login() {
     currentUser = codename;
 
     try {
+        msgEl.style.color = '#60a5fa';
+        msgEl.textContent = 'Step 1/4 — loading portfolio...';
         const cloudData = await cloudLoad(codename);
         if (cloudData) {
             userData = cloudData;
             msgEl.style.color = '#4ade80';
-            msgEl.textContent = 'Portfolio loaded ✓';
+            msgEl.textContent = 'Step 1/4 — portfolio loaded ✓';
         } else {
-            // Brand new student — create their bin immediately
             userData = { cash: 100000, holdings: {} };
             msgEl.style.color = '#60a5fa';
-            msgEl.textContent = 'New account — setting up...';
+            msgEl.textContent = 'Step 1/4 — new account, setting up...';
             await cloudSave(codename, userData);
             msgEl.style.color = '#4ade80';
-            msgEl.textContent = 'Account created ✓';
+            msgEl.textContent = 'Step 1/4 — account created ✓';
         }
     } catch(e) {
         console.error('Login error:', e);
-        // Offline fallback — use local mirror if it exists
         const local = localPortfolioGet(codename);
         userData = local || { cash: 100000, holdings: {} };
         msgEl.style.color = '#fb923c';
@@ -642,13 +654,22 @@ async function login() {
     try {
         populateTickerDropdown();
         updateUI();
+
+        msgEl.style.color = '#60a5fa';
+        msgEl.textContent = 'Step 2/4 — syncing prices...';
         document.getElementById('sync-status').textContent = 'SYNCING...';
         document.getElementById('sync-status').classList.add('sync-pulse');
         await performDailyPriceSync();
         document.getElementById('sync-status').classList.remove('sync-pulse');
+
+        msgEl.textContent = 'Step 3/4 — loading chart...';
         await loadStock('AAPL');
+
+        msgEl.textContent = 'Step 4/4 — done ✓';
     } catch(e) {
         console.error('Dashboard init error:', e);
+        msgEl.style.color = '#fb923c';
+        msgEl.textContent = '⚠ Error: ' + e.message.slice(0, 60);
         ensurePriceSeed();
         document.getElementById('sync-status').textContent = 'OFFLINE';
         document.getElementById('sync-status').classList.remove('sync-pulse');
