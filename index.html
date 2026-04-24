@@ -721,69 +721,67 @@ async function login() {
     const codename = document.getElementById('codename').value.trim().toUpperCase();
     if (!codename) return;
 
-    const btn    = document.getElementById('login-btn');
+    const btn = document.getElementById('login-btn');
     btn.disabled = true;
     btn.textContent = 'CONNECTING...';
-    setLoginStatus('Connecting to cloud...', 'info');
 
-    currentUser = codename;
+    // ── All async work happens BEFORE hiding the login screen ──
+    // This keeps the spinner visible throughout the entire process.
 
+    // Step 1 — Portfolio
+    setLoginStatus('Step 1 — loading portfolio...', 'info');
     try {
-        setLoginStatus('Step 1 — loading portfolio...', 'info');
         const cloudData = await cloudLoad(codename);
         if (cloudData) {
             userData = cloudData;
             setLoginStatus('Portfolio loaded ✓', 'success');
         } else {
             userData = { cash: 100000, holdings: {} };
-            setLoginStatus('New account — setting up...', 'info');
+            setLoginStatus('New account — saving...', 'info');
             await cloudSave(codename, userData);
-            setLoginStatus('Account created ✓', 'success');
+            setLoginStatus('Account ready ✓', 'success');
         }
     } catch(e) {
-        console.error('Login error:', e);
         const local = localPortfolioGet(codename);
         userData = local || { cash: 100000, holdings: {} };
-        setLoginStatus(local ? '⚠ Offline — loaded local copy' : '⚠ Offline — starting fresh', 'warn');
+        setLoginStatus(local ? '⚠ Offline — local copy loaded' : '⚠ Offline mode', 'warn');
     }
 
+    currentUser = codename;
+
+    // Step 2 — Price sync
+    setLoginStatus('Step 2 — syncing market prices...', 'info');
+    try {
+        ensurePriceSeed();
+        await performDailyPriceSync();
+    } catch(e) { ensurePriceSeed(); }
+
+    // Step 3 — Holdings prices
+    if (Object.keys(userData.holdings).length) {
+        setLoginStatus('Step 3 — updating holdings prices...', 'info');
+        await loadAllHoldingsPrices();
+    }
+
+    // Step 4 — Now switch to dashboard
+    setLoginStatus('Step 4 — launching...', 'info');
     document.getElementById('display-name').textContent = 'SESSION: ' + codename;
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('dashboard').classList.remove('hidden');
 
+    populateTickerDropdown();
+    updateUI();
+
+    // Step 5 — Load AAPL chart (dashboard already visible, sync-status shows progress)
+    document.getElementById('sync-status').textContent = 'LOADING...';
+    document.getElementById('sync-status').classList.add('sync-pulse');
     try {
-        populateTickerDropdown();
-        ensurePriceSeed();
-        updateUI();
-
-        setLoginStatus('Step 2 — syncing market prices...', 'info');
-        document.getElementById('sync-status').textContent = 'SYNCING...';
-        document.getElementById('sync-status').classList.add('sync-pulse');
-        await performDailyPriceSync();
-        document.getElementById('sync-status').classList.remove('sync-pulse');
-        updateUI();
-
-        setLoginStatus('Step 3 — updating holdings...', 'info');
-        await loadAllHoldingsPrices();
-        updateUI();
-
-        setLoginStatus('Step 4 — loading chart...', 'info');
         await loadStock('AAPL');
-        updateUI();
+    } catch(e) { console.warn('AAPL chart failed:', e.message); }
+    document.getElementById('sync-status').classList.remove('sync-pulse');
+    updateUI();
 
-        setLoginStatus('Ready ✓', 'success');
-        setTimeout(() => setLoginStatus('', 'success'), 2000);
-
-    } catch(e) {
-        console.error('Dashboard init error:', e);
-        setLoginStatus('⚠ ' + e.message.slice(0, 50), 'error');
-        ensurePriceSeed();
-        document.getElementById('sync-status').textContent = 'OFFLINE';
-        document.getElementById('sync-status').classList.remove('sync-pulse');
-    } finally {
-        btn.disabled    = false;
-        btn.textContent = 'ACCESS TERMINAL';
-    }
+    btn.disabled    = false;
+    btn.textContent = 'ACCESS TERMINAL';
 }
 
 function populateTickerDropdown() {
