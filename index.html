@@ -585,16 +585,18 @@ async function performDailyPriceSync() {
     }
 }
 
-// Harvest any previously cached chart history to fill in last_known_prices.
-// This ensures holdings panel shows real prices for every stock the student
-// has ever viewed, even before the GitHub Action has run.
+// Harvest previously cached chart history to fill ONLY gaps not covered by price bin.
+// Uses ISO date string for reliable comparison.
 function harvestChartCache() {
     const store   = JSON.parse(localStorage.getItem('last_known_prices') || '{}');
     const today   = new Date().toISOString().split('T')[0];
     let   changed = false;
 
     sp100Data.forEach(stock => {
-        // Find the most recent cached history for this ticker
+        // Only fill in if we don't already have today's price from the sync
+        if (store[stock.t] && store[stock.t].date === today) return;
+
+        // Find most recent cached history for this ticker
         const keys = Object.keys(localStorage)
             .filter(k => k.startsWith('history_' + stock.t + '_'))
             .sort();
@@ -603,10 +605,13 @@ function harvestChartCache() {
         const history = JSON.parse(localStorage.getItem(keys[keys.length - 1]) || 'null');
         if (!history || !history.length) return;
 
+        // Extract the cache date from the key (history_AAPL_2026-04-19 → 2026-04-19)
+        const cacheDate = keys[keys.length - 1].replace('history_' + stock.t + '_', '');
         const lastEntry = history[history.length - 1];
-        // Only update if this is newer than what we already have
-        if (!store[stock.t] || lastEntry.date > (store[stock.t].date || '')) {
-            store[stock.t] = { price: lastEntry.price, date: lastEntry.date };
+
+        // Only update if cache date is newer than what we have
+        if (!store[stock.t] || cacheDate > (store[stock.t].date || '')) {
+            store[stock.t] = { price: lastEntry.price, date: cacheDate };
             changed = true;
         }
     });
@@ -614,8 +619,55 @@ function harvestChartCache() {
     if (changed) localStorage.setItem('last_known_prices', JSON.stringify(store));
 }
 
-// Try multiple CORS proxies in sequence until one works
-async function fetchWithProxies(url) {
+// =================================================================
+//  HOLDINGS PRICE REFRESH
+//  On login, fetch real chart prices for every stock in the portfolio.
+//  This guarantees accurate P/L immediately without waiting for the
+//  GitHub Action to have run or the student to click each stock.
+// =================================================================
+async function refreshHoldingsPrices() {
+    const tickers = Object.keys(userData.holdings);
+    if (!tickers.length) return;
+
+    const today = new Date().toISOString().split('T')[0];
+
+    await Promise.allSettled(tickers.map(async ticker => {
+        // Check if we already have today's chart cached
+        const cacheKey = 'history_' + ticker + '_' + today;
+        let history    = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+
+        if (!history) {
+            // Try to fetch from Yahoo via proxies
+            try {
+                const toTs   = Math.floor(Date.now() / 1000);
+                const fromTs = toTs - (2 * 365 * 24 * 3600);
+                const url    = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&period1=${fromTs}&period2=${toTs}`;
+                const resp   = await fetchWithProxies(url);
+                const data   = await resp.json();
+                const result = data?.chart?.result?.[0];
+                if (result) {
+                    history = result.timestamp.map((t,i) => ({
+                        date:  new Date(t*1000).toLocaleDateString(),
+                        price: result.indicators.quote[0].close[i]
+                    })).filter(h => h.price != null);
+                    localStorage.setItem(cacheKey, JSON.stringify(history));
+                }
+            } catch(e) {
+                // Fall back to most recent cached history for this ticker
+                const prevKey = Object.keys(localStorage)
+                    .filter(k => k.startsWith('history_' + ticker + '_'))
+                    .sort().pop();
+                if (prevKey) history = JSON.parse(localStorage.getItem(prevKey) || 'null');
+            }
+        }
+
+        // Update last_known_prices with the real closing price
+        if (history && history.length) {
+            const last = history[history.length - 1];
+            saveLastKnownPrice(ticker, last.price, last.date);
+        }
+    }));
+}
     const proxies = [
         'https://corsproxy.io/?url=',
         'https://api.allorigins.win/raw?url=',
@@ -683,17 +735,19 @@ async function login() {
 
     try {
         populateTickerDropdown();
-        ensurePriceSeed();       // seed prices as baseline
-        harvestChartCache();     // overlay any real prices from previously fetched charts
-        updateUI();
+        ensurePriceSeed();       // seed baseline — only fills missing entries
+        updateUI();              // show seed prices immediately
 
         msgEl.style.color = '#60a5fa';
         msgEl.textContent = 'Step 2/4 — syncing prices...';
         document.getElementById('sync-status').textContent = 'SYNCING...';
         document.getElementById('sync-status').classList.add('sync-pulse');
-        await performDailyPriceSync();
+        await performDailyPriceSync();  // writes today's prices from JSONBin
         document.getElementById('sync-status').classList.remove('sync-pulse');
-        updateUI();   // refresh holdings with freshly synced prices
+
+        harvestChartCache();     // fill any gaps with previously cached chart data
+        await refreshHoldingsPrices();  // fetch live chart for held stocks not yet in cache
+        updateUI();              // now reflects best available price for all holdings
 
         msgEl.textContent = 'Step 3/4 — loading chart...';
         await loadStock('AAPL');
