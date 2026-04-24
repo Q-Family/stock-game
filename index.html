@@ -32,6 +32,37 @@
         #save-banner.saved   { background:#14532d; color:#4ade80; border:1px solid #16a34a55; opacity:1; }
         #save-banner.error   { background:#450a0a; color:#f87171; border:1px solid #dc262655; opacity:1; }
         #save-banner.hide    { opacity:0; }
+
+        /* Spinner */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner {
+            width: 20px; height: 20px;
+            border: 2px solid #334155;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        /* Progress bar */
+        @keyframes progress-indeterminate {
+            0%   { left: -40%; width: 40%; }
+            60%  { left: 100%; width: 40%; }
+            100% { left: 100%; width: 40%; }
+        }
+        #login-progress {
+            height: 3px; background: #1e293b;
+            border-radius: 2px; overflow: hidden;
+            margin-top: 12px; display: none;
+        }
+        #login-progress.active { display: block; }
+        #login-progress-bar {
+            position: relative; height: 100%;
+            background: #3b82f6; border-radius: 2px;
+            animation: progress-indeterminate 1.4s ease infinite;
+        }
     </style>
 </head>
 <body>
@@ -48,9 +79,17 @@
                oninput="this.value = this.value.toUpperCase()"
                onkeydown="if(event.key==='Enter') login()"
                class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg mb-2 text-center text-lg font-bold text-blue-400 outline-none uppercase focus:border-blue-500">
-        <p id="login-msg" class="text-xs mb-3 h-4"></p>
+        <!-- Status message with spinner -->
+        <div class="flex items-center justify-center h-6 mb-1">
+            <span id="login-spinner" class="spinner hidden"></span>
+            <p id="login-msg" class="text-xs"></p>
+        </div>
+        <!-- Animated progress bar -->
+        <div id="login-progress">
+            <div id="login-progress-bar"></div>
+        </div>
         <button onclick="login()" id="login-btn"
-                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition uppercase tracking-widest">
+                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition uppercase tracking-widest mt-3">
             Access Terminal
         </button>
         <p class="text-slate-700 text-[9px] mt-4 uppercase tracking-widest">Portfolio saved to cloud · Any device · Any browser</p>
@@ -587,22 +626,59 @@ async function performDailyPriceSync() {
 
 // =================================================================
 //  AUTO-LOAD ALL HOLDINGS ON LOGIN
-//  Simulates the student selecting each held stock from the dropdown.
-//  loadStock fetches the real chart, saves the last closing price, and
-//  updates last_known_prices — exactly what the dropdown does manually.
+//  Runs all held stocks in parallel. Uses today's cache if available
+//  (instant). Only hits the network for stocks not yet cached today.
+//  Hard 5-second timeout per stock so login never hangs.
 // =================================================================
 async function loadAllHoldingsPrices() {
     const tickers = Object.keys(userData.holdings);
     if (!tickers.length) return;
 
-    // Load each held stock sequentially — updates last_known_prices for each
-    for (const ticker of tickers) {
+    const today = new Date().toISOString().split('T')[0];
+
+    await Promise.allSettled(tickers.map(async ticker => {
         try {
-            await loadStock(ticker);
+            const cacheKey = 'history_' + ticker + '_' + today;
+            let history    = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+
+            if (!history) {
+                // Not cached today — try a quick network fetch with hard 5s timeout
+                try {
+                    const toTs   = Math.floor(Date.now() / 1000);
+                    const fromTs = toTs - (2 * 365 * 24 * 3600);
+                    const url    = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&period1=${fromTs}&period2=${toTs}`;
+
+                    const resp = await Promise.race([
+                        fetchWithProxies(url),
+                        new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 5000))
+                    ]);
+                    const data   = await resp.json();
+                    const result = data?.chart?.result?.[0];
+                    if (result) {
+                        history = result.timestamp.map((t,i) => ({
+                            date:  new Date(t*1000).toLocaleDateString(),
+                            price: result.indicators.quote[0].close[i]
+                        })).filter(h => h.price != null);
+                        localStorage.setItem(cacheKey, JSON.stringify(history));
+                    }
+                } catch(e) {
+                    // Network failed — fall back to most recent cached history
+                    const prevKey = Object.keys(localStorage)
+                        .filter(k => k.startsWith('history_' + ticker + '_'))
+                        .sort().pop();
+                    if (prevKey) history = JSON.parse(localStorage.getItem(prevKey) || 'null');
+                }
+            }
+
+            // Write last closing price — unconditionally overwrites seed/bin price
+            if (history && history.length) {
+                const last = history[history.length - 1];
+                saveLastKnownPrice(ticker, last.price, today);
+            }
         } catch(e) {
-            console.warn('Could not load price for', ticker, e.message);
+            console.warn('Holdings price update failed for', ticker, e.message);
         }
-    }
+    }));
 }
     const proxies = [
         'https://corsproxy.io/?url=',
@@ -624,6 +700,21 @@ async function loadAllHoldingsPrices() {
 }
 
 // =================================================================
+//  LOGIN STATUS HELPER
+// =================================================================
+function setLoginStatus(msg, type = 'info') {
+    const msgEl     = document.getElementById('login-msg');
+    const spinner   = document.getElementById('login-spinner');
+    const progress  = document.getElementById('login-progress');
+    const colors    = { info: '#60a5fa', success: '#4ade80', warn: '#fb923c', error: '#f87171' };
+    msgEl.style.color   = colors[type] || colors.info;
+    msgEl.textContent   = msg;
+    const loading = (type === 'info');
+    spinner.classList.toggle('hidden', !loading);
+    loading ? progress.classList.add('active') : progress.classList.remove('active');
+}
+
+// =================================================================
 //  LOGIN
 // =================================================================
 async function login() {
@@ -631,38 +722,29 @@ async function login() {
     if (!codename) return;
 
     const btn    = document.getElementById('login-btn');
-    const msgEl  = document.getElementById('login-msg');
     btn.disabled = true;
     btn.textContent = 'CONNECTING...';
-    msgEl.style.color = '#60a5fa';
-    msgEl.textContent = 'Loading your portfolio from cloud...';
+    setLoginStatus('Connecting to cloud...', 'info');
 
     currentUser = codename;
 
     try {
-        msgEl.style.color = '#60a5fa';
-        msgEl.textContent = 'Step 1/4 — loading portfolio...';
+        setLoginStatus('Step 1 — loading portfolio...', 'info');
         const cloudData = await cloudLoad(codename);
         if (cloudData) {
             userData = cloudData;
-            msgEl.style.color = '#4ade80';
-            msgEl.textContent = 'Step 1/4 — portfolio loaded ✓';
+            setLoginStatus('Portfolio loaded ✓', 'success');
         } else {
             userData = { cash: 100000, holdings: {} };
-            msgEl.style.color = '#60a5fa';
-            msgEl.textContent = 'Step 1/4 — new account, setting up...';
+            setLoginStatus('New account — setting up...', 'info');
             await cloudSave(codename, userData);
-            msgEl.style.color = '#4ade80';
-            msgEl.textContent = 'Step 1/4 — account created ✓';
+            setLoginStatus('Account created ✓', 'success');
         }
     } catch(e) {
         console.error('Login error:', e);
         const local = localPortfolioGet(codename);
         userData = local || { cash: 100000, holdings: {} };
-        msgEl.style.color = '#fb923c';
-        msgEl.textContent = local
-            ? '⚠ Cloud unreachable — loaded local copy'
-            : '⚠ Cloud unreachable — starting offline';
+        setLoginStatus(local ? '⚠ Offline — loaded local copy' : '⚠ Offline — starting fresh', 'warn');
     }
 
     document.getElementById('display-name').textContent = 'SESSION: ' + codename;
@@ -674,33 +756,27 @@ async function login() {
         ensurePriceSeed();
         updateUI();
 
-        msgEl.style.color = '#60a5fa';
-        msgEl.textContent = 'Step 2/4 — syncing prices...';
+        setLoginStatus('Step 2 — syncing market prices...', 'info');
         document.getElementById('sync-status').textContent = 'SYNCING...';
         document.getElementById('sync-status').classList.add('sync-pulse');
         await performDailyPriceSync();
         document.getElementById('sync-status').classList.remove('sync-pulse');
         updateUI();
 
-        msgEl.textContent = 'Step 3/4 — updating holdings...';
+        setLoginStatus('Step 3 — updating holdings...', 'info');
         await loadAllHoldingsPrices();
         updateUI();
 
-        msgEl.textContent = 'Step 4/4 — loading chart...';
+        setLoginStatus('Step 4 — loading chart...', 'info');
         await loadStock('AAPL');
         updateUI();
 
-        msgEl.textContent = 'Step 5/5 — done ✓';
+        setLoginStatus('Ready ✓', 'success');
+        setTimeout(() => setLoginStatus('', 'success'), 2000);
 
-        msgEl.textContent = 'Step 3/4 — loading chart...';
-        await loadStock('AAPL');
-        updateUI();   // final refresh after chart prices are cached
-
-        msgEl.textContent = 'Step 4/4 — done ✓';
     } catch(e) {
         console.error('Dashboard init error:', e);
-        msgEl.style.color = '#fb923c';
-        msgEl.textContent = '⚠ Error: ' + e.message.slice(0, 60);
+        setLoginStatus('⚠ ' + e.message.slice(0, 50), 'error');
         ensurePriceSeed();
         document.getElementById('sync-status').textContent = 'OFFLINE';
         document.getElementById('sync-status').classList.remove('sync-pulse');
