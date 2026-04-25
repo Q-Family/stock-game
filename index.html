@@ -722,66 +722,86 @@ async function login() {
     if (!codename) return;
 
     const btn = document.getElementById('login-btn');
-    btn.disabled = true;
-    btn.textContent = 'CONNECTING...';
-
-    // ── All async work happens BEFORE hiding the login screen ──
-    // This keeps the spinner visible throughout the entire process.
-
-    // Step 1 — Portfolio
-    setLoginStatus('Step 1 — loading portfolio...', 'info');
-    try {
-        const cloudData = await cloudLoad(codename);
-        if (cloudData) {
-            userData = cloudData;
-            setLoginStatus('Portfolio loaded ✓', 'success');
-        } else {
-            userData = { cash: 100000, holdings: {} };
-            setLoginStatus('New account — saving...', 'info');
-            await cloudSave(codename, userData);
-            setLoginStatus('Account ready ✓', 'success');
-        }
-    } catch(e) {
-        const local = localPortfolioGet(codename);
-        userData = local || { cash: 100000, holdings: {} };
-        setLoginStatus(local ? '⚠ Offline — local copy loaded' : '⚠ Offline mode', 'warn');
-    }
+    btn.disabled    = true;
+    btn.textContent = 'LOADING...';
+    setLoginStatus('Loading...', 'info');
 
     currentUser = codename;
 
-    // Step 2 — Price sync
-    setLoginStatus('Step 2 — syncing market prices...', 'info');
-    try {
-        ensurePriceSeed();
-        await performDailyPriceSync();
-    } catch(e) { ensurePriceSeed(); }
+    // ── INSTANT: load from local cache so dashboard appears immediately ──
+    const localData = localPortfolioGet(codename);
+    userData = localData || { cash: 100000, holdings: {} };
 
-    // Step 3 — Holdings prices
-    if (Object.keys(userData.holdings).length) {
-        setLoginStatus('Step 3 — updating holdings prices...', 'info');
-        await loadAllHoldingsPrices();
-    }
-
-    // Step 4 — Now switch to dashboard
-    setLoginStatus('Step 4 — launching...', 'info');
+    // Show dashboard right away — no waiting
     document.getElementById('display-name').textContent = 'SESSION: ' + codename;
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('dashboard').classList.remove('hidden');
-
     populateTickerDropdown();
-    updateUI();
-
-    // Step 5 — Load AAPL chart (dashboard already visible, sync-status shows progress)
-    document.getElementById('sync-status').textContent = 'LOADING...';
-    document.getElementById('sync-status').classList.add('sync-pulse');
-    try {
-        await loadStock('AAPL');
-    } catch(e) { console.warn('AAPL chart failed:', e.message); }
-    document.getElementById('sync-status').classList.remove('sync-pulse');
+    ensurePriceSeed();
     updateUI();
 
     btn.disabled    = false;
     btn.textContent = 'ACCESS TERMINAL';
+    setLoginStatus('', 'success');
+
+    // ── BACKGROUND: sync everything after dashboard is visible ──
+    backgroundSync(codename);
+}
+
+async function backgroundSync(codename) {
+    const statusEl = document.getElementById('sync-status');
+
+    // 1. Load real portfolio from cloud (replaces local cache if different)
+    try {
+        statusEl.textContent = 'LOADING...';
+        statusEl.classList.add('sync-pulse');
+        const cloudData = await cloudLoad(codename);
+        if (cloudData) {
+            userData = cloudData;
+            localPortfolioSet(codename, cloudData);
+            updateUI();
+        } else if (!localPortfolioGet(codename)) {
+            // Brand new student — save fresh account to cloud
+            await cloudSave(codename, userData);
+        }
+    } catch(e) {
+        console.warn('Cloud portfolio load failed — using local:', e.message);
+    }
+
+    // 2. Sync prices from JSONBin price bin
+    try {
+        statusEl.textContent = 'SYNCING...';
+        await performDailyPriceSync();
+        updateUI();
+    } catch(e) {
+        console.warn('Price sync failed:', e.message);
+    }
+
+    // 3. Fetch real chart prices for held stocks (parallel, 5s max each)
+    try {
+        statusEl.textContent = 'UPDATING...';
+        await loadAllHoldingsPrices();
+        updateUI();
+    } catch(e) {
+        console.warn('Holdings refresh failed:', e.message);
+    }
+
+    // 4. Load AAPL chart
+    try {
+        statusEl.textContent = 'CHARTING...';
+        await loadStock('AAPL');
+        updateUI();
+    } catch(e) {
+        console.warn('AAPL chart failed:', e.message);
+    }
+
+    statusEl.classList.remove('sync-pulse');
+    statusEl.textContent = 'READY';
+    statusEl.style.color = '#4ade80';
+    setTimeout(() => {
+        statusEl.textContent = 'LIVE';
+        statusEl.style.color = '';
+    }, 3000);
 }
 
 function populateTickerDropdown() {
