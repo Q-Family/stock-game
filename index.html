@@ -210,19 +210,26 @@ function setBinId(codename, id) { const m=ls.get('jb_ids')||{}; m[codename]=id; 
 //  CLOUD PORTFOLIO — load and save
 // ═══════════════════════════════════════════════════════════════════
 async function cloudLoad(codename) {
-    // Try cached bin ID first (fast path — same device returning)
     let binId = getBinId(codename);
+    console.log(`[cloudLoad] cached binId for ${codename}:`, binId);
 
     if (!binId) {
-        // Read index bin to find this student's bin
+        console.log(`[cloudLoad] reading index bin ${INDEX_BIN_ID}...`);
         const idx = await jbFetch(`/b/${INDEX_BIN_ID}/latest`);
+        console.log(`[cloudLoad] index bin contents:`, JSON.stringify(idx?.record));
         binId = idx?.record?.[codename] || null;
+        console.log(`[cloudLoad] found binId for ${codename}:`, binId);
         if (binId) setBinId(codename, binId);
     }
 
-    if (!binId) return null; // brand new student
+    if (!binId) {
+        console.log(`[cloudLoad] no bin found for ${codename} — new student`);
+        return null;
+    }
 
+    console.log(`[cloudLoad] reading portfolio bin ${binId}...`);
     const data = await jbFetch(`/b/${binId}/latest`);
+    console.log(`[cloudLoad] portfolio data:`, JSON.stringify(data?.record)?.slice(0,200));
     const portfolio = data?.record || null;
     if (portfolio) setPortfolioLocal(codename, portfolio);
     return portfolio;
