@@ -16,27 +16,20 @@
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
         select { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1em; }
-
-        /* Spinner */
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner { width:18px; height:18px; border:2px solid #334155; border-top-color:#3b82f6; border-radius:50%; animation:spin 0.7s linear infinite; display:inline-block; vertical-align:middle; margin-right:6px; flex-shrink:0; }
-
-        /* Save banner */
         #save-banner { position:fixed; bottom:1.25rem; right:1.25rem; z-index:999; padding:10px 18px; border-radius:8px; font-size:11px; font-weight:700; letter-spacing:0.06em; transition:opacity 0.4s; pointer-events:none; opacity:0; }
         #save-banner.saving { background:#1e3a5f; color:#60a5fa; border:1px solid #2563eb55; opacity:1; }
         #save-banner.saved  { background:#14532d; color:#4ade80; border:1px solid #16a34a55; opacity:1; }
         #save-banner.error  { background:#450a0a; color:#f87171; border:1px solid #dc262655; opacity:1; }
-
-        /* Sync pulse */
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
         .sync-pulse { animation:pulse 1.5s ease-in-out infinite; }
     </style>
 </head>
 <body>
-
 <div id="save-banner"></div>
 
-<!-- ═══════════════════════════════════════════════════════ LOGIN -->
+<!-- LOGIN -->
 <div id="login-screen" class="min-h-screen flex items-center justify-center px-4">
     <div class="card p-8 w-full max-w-md text-center shadow-2xl border-blue-500/30">
         <h1 class="text-3xl font-black text-blue-400 mb-2 tracking-tighter uppercase">Market Insight</h1>
@@ -55,7 +48,7 @@
     </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════ DASHBOARD -->
+<!-- DASHBOARD -->
 <div id="dashboard" class="hidden min-h-screen flex flex-col">
     <header class="p-4 bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
@@ -70,11 +63,8 @@
             </div>
         </div>
     </header>
-
     <main class="max-w-7xl mx-auto p-4 lg:p-6 w-full flex-1">
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-
-            <!-- LEFT PANEL -->
             <div class="lg:col-span-1 space-y-6">
                 <div class="card p-6 bg-slate-900 border-blue-500/20">
                     <p class="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Net Worth</p>
@@ -94,8 +84,6 @@
                     </table>
                 </div>
             </div>
-
-            <!-- RIGHT PANEL -->
             <div class="lg:col-span-3 card p-6">
                 <div class="flex flex-col md:flex-row justify-between mb-6 gap-4">
                     <div class="flex flex-col gap-1 w-full md:w-64">
@@ -142,109 +130,104 @@
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════
-//  CONFIG  — fill in PRICE_BIN_ID once your sync.js has run once
-// ═══════════════════════════════════════════════════════════════════
-const JBIN_KEY      = '$2a$10$CNFDK3j9QIkCy3MO5yxcQ.gD9OPRQCCRKEczGvO41wFZ7OzephNPq';
-const JBIN_BASE     = 'https://api.jsonbin.io/v3';
-const COLLECTION_ID = '69e173be36566621a8c002aa';
-const INDEX_BIN_ID  = '69e1c730856a68218942820b';
-const PRICE_BIN_ID  = '';   // ← paste your price bin ID here
+// ═══════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════
+const JBIN_KEY     = '$2a$10$CNFDK3j9QIkCy3MO5yxcQ.gD9OPRQCCRKEczGvO41wFZ7OzephNPq';
+const JBIN_BASE    = 'https://api.jsonbin.io/v3';
+const INDEX_BIN_ID = '69e1c730856a68218942820b';
+const PRICE_BIN_ID = '';  // ← paste your price bin ID here
 
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
 //  APP STATE
-// ═══════════════════════════════════════════════════════════════════
-let currentUser  = '';
-let userData     = { cash: 100000, holdings: {} };
-let activeStock  = { ticker:'', dates:[], prices:[], sma50:[], sma200:[] };
+// ═══════════════════════════════════════
+let currentUser   = '';
+let userData      = { cash: 100000, holdings: {} };
+let activeStock   = { ticker:'', dates:[], prices:[], sma50:[], sma200:[] };
 let chartInstance = null;
 let loadRequestId = 0;
-
 function getCurrentPrice() {
     return activeStock.prices.length ? activeStock.prices[activeStock.prices.length-1] : 0;
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  LOGIN STATUS HELPER
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+//  STATUS
+// ═══════════════════════════════════════
 function setStatus(msg, type) {
     const el = document.getElementById('login-status');
     const colors = { info:'#60a5fa', success:'#4ade80', warn:'#fb923c', error:'#f87171' };
-    const spinning = type === 'info';
-    el.innerHTML = (spinning ? '<span class="spinner"></span>' : '') +
+    el.innerHTML = (type==='info' ? '<span class="spinner"></span>' : '') +
         `<span style="color:${colors[type]||colors.info}">${msg}</span>`;
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  JSONBIN — simple fetch with timeout
-// ═══════════════════════════════════════════════════════════════════
-async function jbFetch(path, method='GET', body=null) {
+// ═══════════════════════════════════════
+//  JSONBIN — 15s timeout, one retry
+// ═══════════════════════════════════════
+async function jbFetch(path, method='GET', body=null, attempt=1) {
     const ctrl = new AbortController();
-    const t    = setTimeout(() => ctrl.abort(), 8000);
+    const t = setTimeout(() => ctrl.abort(), 15000);
     try {
-        const opts = { method, headers:{'X-Master-Key':JBIN_KEY}, signal:ctrl.signal };
-        if (body) { opts.body = JSON.stringify(body); opts.headers['Content-Type']='application/json'; }
-        const r = await fetch(JBIN_BASE+path, opts);
+        const opts = { method, headers: { 'X-Master-Key': JBIN_KEY }, signal: ctrl.signal };
+        if (body) { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
+        const r = await fetch(JBIN_BASE + path, opts);
         clearTimeout(t);
-        if (!r.ok) throw new Error(`${r.status}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
-    } catch(e) { clearTimeout(t); throw e; }
+    } catch(e) {
+        clearTimeout(t);
+        if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 1500));
+            return jbFetch(path, method, body, attempt + 1);
+        }
+        if (e.name === 'AbortError') throw new Error(`Timeout: ${method} ${path}`);
+        throw e;
+    }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  LOCAL STORAGE HELPERS
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+//  LOCAL STORAGE
+// ═══════════════════════════════════════
 const ls = {
     get:  k => { try { return JSON.parse(localStorage.getItem(k)); } catch(e) { return null; } },
     set:  (k,v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} },
-    raw:  k => localStorage.getItem(k),
     keys: () => Object.keys(localStorage)
 };
+function getLocal(cn)        { return ls.get('pf_'+cn); }
+function setLocal(cn, d)     { ls.set('pf_'+cn, d); }
+function getCachedBinId(cn)  { return (ls.get('jb_ids')||{})[cn] || null; }
+function setCachedBinId(cn, id) { const m=ls.get('jb_ids')||{}; m[cn]=id; ls.set('jb_ids',m); }
 
-function getPortfolioLocal(codename) { return ls.get('pf_'+codename); }
-function setPortfolioLocal(codename, data) { ls.set('pf_'+codename, data); }
-function getBinId(codename) { return (ls.get('jb_ids')||{})[codename]||null; }
-function setBinId(codename, id) { const m=ls.get('jb_ids')||{}; m[codename]=id; ls.set('jb_ids',m); }
-
-// ═══════════════════════════════════════════════════════════════════
-//  CLOUD PORTFOLIO — load and save
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+//  CLOUD LOAD — read only, never writes
+// ═══════════════════════════════════════
 async function cloudLoad(codename) {
-    let binId = getBinId(codename);
-    console.log(`[cloudLoad] cached binId for ${codename}:`, binId);
+    let binId = getCachedBinId(codename);
 
     if (!binId) {
-        console.log(`[cloudLoad] reading index bin ${INDEX_BIN_ID}...`);
         const idx = await jbFetch(`/b/${INDEX_BIN_ID}/latest`);
-        console.log(`[cloudLoad] index bin contents:`, JSON.stringify(idx?.record));
-        binId = idx?.record?.[codename] || null;
-        console.log(`[cloudLoad] found binId for ${codename}:`, binId);
-        if (binId) setBinId(codename, binId);
+        const record = idx?.record || {};
+        binId = record[codename] || null;
+        if (binId) setCachedBinId(codename, binId);
     }
 
-    if (!binId) {
-        console.log(`[cloudLoad] no bin found for ${codename} — new student`);
-        return null;
-    }
+    if (!binId) return null; // new student — no record exists
 
-    console.log(`[cloudLoad] reading portfolio bin ${binId}...`);
     const data = await jbFetch(`/b/${binId}/latest`);
-    console.log(`[cloudLoad] portfolio data:`, JSON.stringify(data?.record)?.slice(0,200));
     const portfolio = data?.record || null;
-    if (portfolio) setPortfolioLocal(codename, portfolio);
+    if (portfolio) setLocal(codename, portfolio);
     return portfolio;
 }
 
+// ═══════════════════════════════════════
+//  CLOUD SAVE
+// ═══════════════════════════════════════
 async function cloudSave(codename, portfolio) {
-    let binId = getBinId(codename);
-
+    let binId = getCachedBinId(codename);
     if (!binId) {
-        // Create new bin for this student
         const created = await jbFetch('/b', 'POST', portfolio);
         binId = created?.metadata?.id;
         if (!binId) throw new Error('Failed to create bin');
-        setBinId(codename, binId);
-        // Register in index
+        setCachedBinId(codename, binId);
         const idx = await jbFetch(`/b/${INDEX_BIN_ID}/latest`);
         const map = idx?.record || {};
         map[codename] = binId;
@@ -252,38 +235,31 @@ async function cloudSave(codename, portfolio) {
     } else {
         await jbFetch(`/b/${binId}`, 'PUT', portfolio);
     }
-    setPortfolioLocal(codename, portfolio);
+    setLocal(codename, portfolio);
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  SAVE BANNER + DEBOUNCED SAVE
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+//  SAVE BANNER
+// ═══════════════════════════════════════
 let bannerTimer=null, saveTimer=null;
-
 function showBanner(cls, msg) {
     const b = document.getElementById('save-banner');
     b.textContent = msg; b.className = cls;
     clearTimeout(bannerTimer);
     if (cls==='saved') bannerTimer = setTimeout(()=>{ b.className=''; }, 2500);
 }
-
 function scheduleSave() {
     clearTimeout(saveTimer);
-    showBanner('saving','⟳  SAVING...');
+    showBanner('saving', '⟳  SAVING...');
     saveTimer = setTimeout(async () => {
-        try {
-            await cloudSave(currentUser, userData);
-            showBanner('saved','✓  SAVED');
-        } catch(e) {
-            setPortfolioLocal(currentUser, userData);
-            showBanner('error','⚠  SAVE FAILED — LOCAL COPY KEPT');
-        }
+        try { await cloudSave(currentUser, userData); showBanner('saved', '✓  SAVED'); }
+        catch(e) { setLocal(currentUser, userData); showBanner('error', '⚠  SAVE FAILED — LOCAL COPY KEPT'); }
     }, 1000);
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  SEED PRICES (April 17 2026) — always available, no network needed
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+//  SEED PRICES (Apr 17 2026 baseline)
+// ═══════════════════════════════════════
 const SEED = {
     "AAPL":198.15,"MSFT":369.24,"NVDA":109.02,"GOOGL":155.74,"AMZN":184.49,
     "AVGO":173.38,"META":512.30,"TSLA":252.08,"BRK.B":503.00,"LLY":812.25,
@@ -306,46 +282,35 @@ const SEED = {
     "PLD":104.38,"FDX":239.17,"SO":83.47,"MO":54.83,"DUK":117.34,
     "EMR":114.28,"PANW":174.38,"SLB":37.83,"KLAC":678.34,"OXY":45.73
 };
-
 function seedPrices() {
-    const store = ls.get('last_known') || {};
-    let changed = false;
-    Object.entries(SEED).forEach(([t,p]) => {
-        if (!store[t]) { store[t]={price:p,date:'2026-04-17'}; changed=true; }
-    });
-    if (changed) ls.set('last_known', store);
+    const s = ls.get('last_known') || {};
+    let c = false;
+    Object.entries(SEED).forEach(([t,p]) => { if (!s[t]) { s[t]={price:p,date:'2026-04-17'}; c=true; } });
+    if (c) ls.set('last_known', s);
 }
+function savePrice(t, p, d) { const s=ls.get('last_known')||{}; s[t]={price:p,date:d}; ls.set('last_known',s); }
+function getPrice(t) { return (ls.get('last_known')||{})[t] || null; }
 
-function savePrice(ticker, price, date) {
-    const store = ls.get('last_known') || {};
-    store[ticker] = { price, date };
-    ls.set('last_known', store);
-}
-
-function getPrice(ticker) {
-    return (ls.get('last_known')||{})[ticker] || null;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  DAILY PRICE SYNC from JSONBin price bin (written by sync.js)
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+//  PRICE BIN SYNC
+// ═══════════════════════════════════════
 async function syncPricesFromBin() {
     if (!PRICE_BIN_ID) return false;
     try {
         const data = await jbFetch(`/b/${PRICE_BIN_ID}/latest`);
         const prices = data?.record?.prices;
-        const date   = data?.record?.date || new Date().toISOString().split('T')[0];
+        const date = data?.record?.date || new Date().toISOString().split('T')[0];
         if (!prices || !Object.keys(prices).length) return false;
-        const store = ls.get('last_known') || {};
-        Object.entries(prices).forEach(([t,p]) => { store[t]={price:p,date}; });
-        ls.set('last_known', store);
+        const s = ls.get('last_known') || {};
+        Object.entries(prices).forEach(([t,p]) => { s[t]={price:p,date}; });
+        ls.set('last_known', s);
         return true;
     } catch(e) { return false; }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  CORS PROXY FETCH for Yahoo Finance chart data
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+//  CORS PROXY FETCH
+// ═══════════════════════════════════════
 async function proxyFetch(url) {
     const proxies = [
         'https://corsproxy.io/?url=',
@@ -356,7 +321,7 @@ async function proxyFetch(url) {
         try {
             const r = await Promise.race([
                 fetch(p + encodeURIComponent(url)),
-                new Promise((_,rej) => setTimeout(()=>rej(new Error('timeout')),6000))
+                new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 6000))
             ]);
             if (r.ok) return r;
         } catch(e) { continue; }
@@ -364,28 +329,22 @@ async function proxyFetch(url) {
     throw new Error('All proxies failed');
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  FETCH CHART HISTORY for a ticker (cache-first, network fallback)
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+//  FETCH CHART HISTORY
+// ═══════════════════════════════════════
 async function fetchHistory(ticker) {
-    const today    = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
     const cacheKey = `hist_${ticker}_${today}`;
-
-    // Return cached data immediately if available
     const cached = ls.get(cacheKey);
     if (cached) return cached;
-
-    // Clear old dated caches for this ticker
     ls.keys().filter(k => k.startsWith(`hist_${ticker}_`) && k !== cacheKey)
              .forEach(k => localStorage.removeItem(k));
-
-    // Try to fetch fresh data
     try {
-        const toTs   = Math.floor(Date.now()/1000);
+        const toTs = Math.floor(Date.now()/1000);
         const fromTs = toTs - 2*365*24*3600;
-        const url    = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&period1=${fromTs}&period2=${toTs}`;
-        const r      = await proxyFetch(url);
-        const json   = await r.json();
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&period1=${fromTs}&period2=${toTs}`;
+        const r = await proxyFetch(url);
+        const json = await r.json();
         const result = json?.chart?.result?.[0];
         if (result) {
             const history = result.timestamp.map((t,i) => ({
@@ -396,84 +355,87 @@ async function fetchHistory(ticker) {
             return history;
         }
     } catch(e) { /* fall through */ }
-
-    // Fall back to most recent previously cached history
-    const prevKey = ls.keys()
-        .filter(k => k.startsWith(`hist_${ticker}_`))
-        .sort().pop();
+    const prevKey = ls.keys().filter(k => k.startsWith(`hist_${ticker}_`)).sort().pop();
     return prevKey ? ls.get(prevKey) : null;
 }
 
-// ═══════════════════════════════════════════════════════════════════
-//  LOGIN — instant, background sync
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
+//  LOGIN — instant, then background sync
+// ═══════════════════════════════════════
 async function login() {
     const codename = document.getElementById('codename').value.trim().toUpperCase();
     if (!codename) return;
-
     const btn = document.getElementById('login-btn');
-    btn.disabled = true;
-    btn.textContent = 'LOADING...';
+    btn.disabled = true; btn.textContent = 'LOADING...';
     setStatus('Loading...', 'info');
-
     currentUser = codename;
 
-    // Step 1 — Use local cache for instant display
+    // Instant: use local cache (empty on first device visit)
     seedPrices();
-    const local = getPortfolioLocal(codename);
+    const local = getLocal(codename);
     if (local) userData = local;
 
-    // Step 2 — Show dashboard immediately
+    // Show dashboard immediately
     document.getElementById('display-name').textContent = 'SESSION: ' + codename;
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('dashboard').classList.remove('hidden');
     populateDropdown();
     updateUI();
+    btn.disabled = false; btn.textContent = 'ACCESS TERMINAL';
 
-    btn.disabled = false;
-    btn.textContent = 'ACCESS TERMINAL';
-
-    // Step 3 — Run all sync in background (non-blocking)
+    // Background sync (non-blocking)
     runBackgroundSync(codename);
 }
 
+// ═══════════════════════════════════════
+//  BACKGROUND SYNC
+//  KEY FIX: cloudSave is ONLY called when cloudLoad returns null
+//  (meaning no record exists). Never called when cloudLoad fails
+//  due to timeout/network error — that would wipe the portfolio.
+// ═══════════════════════════════════════
 async function runBackgroundSync(codename) {
     const syncEl = document.getElementById('sync-status');
-
-    // A — Sync portfolio from cloud
     syncEl.textContent = 'SYNCING...';
     syncEl.classList.add('sync-pulse');
+
+    // A — Load portfolio from cloud
+    let cloudSucceeded = false;
     try {
         const cloud = await cloudLoad(codename);
         if (cloud) {
+            // Found real portfolio — use it
             userData = cloud;
+            setLocal(codename, cloud);
             updateUI();
             syncEl.textContent = 'PORTFOLIO ✓';
-        } else if (!getPortfolioLocal(codename)) {
-            syncEl.textContent = 'CREATING...';
+            cloudSucceeded = true;
+        } else {
+            // cloudLoad returned null = index has no entry for this codename
+            // This is a genuinely new student — safe to create
+            syncEl.textContent = 'NEW ACCOUNT...';
             await cloudSave(codename, userData);
             syncEl.textContent = 'CREATED ✓';
-        } else {
-            // No cloud record but have local — treat as new and save to cloud
-            syncEl.textContent = 'UPLOADING...';
-            await cloudSave(codename, userData);
+            cloudSucceeded = true;
         }
     } catch(e) {
-        console.warn('Cloud load failed:', e.message);
-        syncEl.textContent = 'CLOUD ERR';
-        syncEl.style.color = '#f87171';
-        // Wait 2s so error is visible, then continue
+        // Network/timeout error — do NOT write anything to cloud
+        // Just use whatever local data we have
+        console.warn('Cloud sync failed:', e.message);
+        syncEl.textContent = 'OFFLINE MODE';
+        syncEl.style.color = '#fb923c';
         await new Promise(r => setTimeout(r, 2000));
         syncEl.style.color = '';
     }
 
-    // B — Sync price bin
-    try {
-        const synced = await syncPricesFromBin();
-        if (synced) updateUI();
-    } catch(e) { /* silent */ }
+    // B — Sync price bin (only if cloud connection worked)
+    if (cloudSucceeded) {
+        try {
+            const synced = await syncPricesFromBin();
+            if (synced) updateUI();
+        } catch(e) { /* silent */ }
+    }
 
-    // C — Fetch real chart prices for all held stocks (parallel, 5s max each)
+    // C — Fetch real prices for held stocks (parallel, 5s max each)
     const tickers = Object.keys(userData.holdings);
     if (tickers.length) {
         syncEl.textContent = 'UPDATING...';
@@ -481,13 +443,13 @@ async function runBackgroundSync(codename) {
             try {
                 const history = await Promise.race([
                     fetchHistory(ticker),
-                    new Promise((_,r) => setTimeout(()=>r(new Error('timeout')),5000))
+                    new Promise((_,r) => setTimeout(() => r(new Error('timeout')), 5000))
                 ]);
                 if (history && history.length) {
                     const last = history[history.length-1];
                     savePrice(ticker, last.price, new Date().toISOString().split('T')[0]);
                 }
-            } catch(e) { /* silent — seed price stays */ }
+            } catch(e) { /* silent */ }
         }));
         updateUI();
     }
@@ -499,25 +461,23 @@ async function runBackgroundSync(codename) {
     syncEl.classList.remove('sync-pulse');
     syncEl.textContent = 'LIVE';
     syncEl.style.color = '#4ade80';
-    setTimeout(() => { syncEl.style.color=''; syncEl.textContent='READY'; }, 4000);
+    setTimeout(() => { syncEl.style.color = ''; syncEl.textContent = 'READY'; }, 4000);
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
 //  UI
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
 function updateUI() {
     document.getElementById('cash-balance').textContent =
-        '$' + userData.cash.toLocaleString(undefined,{minimumFractionDigits:2});
-
+        '$' + userData.cash.toLocaleString(undefined, {minimumFractionDigits:2});
     let total = 0;
     const list = document.getElementById('holdings-list');
     list.innerHTML = '';
-
     Object.entries(userData.holdings).forEach(([t,h]) => {
         const known = getPrice(t);
-        const cp    = known ? known.price : 0;
-        const val   = h.qty * cp;
-        const chg   = val - (h.qty * h.avgPrice);
+        const cp = known ? known.price : 0;
+        const val = h.qty * cp;
+        const chg = val - (h.qty * h.avgPrice);
         total += val;
         list.innerHTML += `
             <tr onclick="loadStock('${t}')" class="cursor-pointer hover:bg-slate-800 transition">
@@ -532,96 +492,82 @@ function updateUI() {
                 </td>
             </tr>`;
     });
-
     document.getElementById('stock-valuation').textContent =
-        '$' + total.toLocaleString(undefined,{minimumFractionDigits:2});
+        '$' + total.toLocaleString(undefined, {minimumFractionDigits:2});
     document.getElementById('net-worth').textContent =
-        '$' + (userData.cash+total).toLocaleString(undefined,{minimumFractionDigits:2});
+        '$' + (userData.cash+total).toLocaleString(undefined, {minimumFractionDigits:2});
 }
 
 function populateDropdown() {
     document.getElementById('ticker-select').innerHTML =
-        sp100Data.map(s=>`<option value="${s.t}">${s.t} – ${s.n}</option>`).join('');
+        sp100Data.map(s => `<option value="${s.t}">${s.t} – ${s.n}</option>`).join('');
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
 //  TRADING
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
 async function executeTrade(type) {
-    const qty   = parseInt(document.getElementById('trade-qty').value)||0;
-    const live  = getCurrentPrice();
+    const qty = parseInt(document.getElementById('trade-qty').value) || 0;
+    const live = getCurrentPrice();
     const known = getPrice(activeStock.ticker);
-    const price = live || (known?known.price:0);
-    if (!qty||!price||!activeStock.ticker) return;
-
+    const price = live || (known ? known.price : 0);
+    if (!qty || !price || !activeStock.ticker) return;
     if (!userData.holdings[activeStock.ticker])
-        userData.holdings[activeStock.ticker] = {qty:0,avgPrice:0};
+        userData.holdings[activeStock.ticker] = {qty:0, avgPrice:0};
     const h = userData.holdings[activeStock.ticker];
-
-    if (type==='BUY' && userData.cash>=qty*price) {
+    if (type==='BUY' && userData.cash >= qty*price) {
         userData.cash -= qty*price;
-        h.avgPrice = ((h.qty*h.avgPrice)+(qty*price))/(h.qty+qty);
+        h.avgPrice = ((h.qty*h.avgPrice) + (qty*price)) / (h.qty+qty);
         h.qty += qty;
-    } else if (type==='SELL' && h.qty>=qty) {
+    } else if (type==='SELL' && h.qty >= qty) {
         userData.cash += qty*price;
         h.qty -= qty;
         if (!h.qty) delete userData.holdings[activeStock.ticker];
     } else return;
-
     updateUI();
     scheduleSave();
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
 //  CHART
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
 async function loadStock(ticker) {
     if (!ticker) return;
     document.getElementById('ticker-select').value = ticker;
     const thisReq = ++loadRequestId;
-
     document.getElementById('trade-ticker-label').textContent = ticker;
-
-    const info = sp100Data.find(s=>s.t===ticker);
+    const info = sp100Data.find(s => s.t===ticker);
     if (info) {
         document.getElementById('summary-name').textContent   = info.n;
         document.getElementById('summary-sector').textContent = info.s;
         document.getElementById('summary-desc').textContent   = info.d;
         document.getElementById('stock-summary').classList.remove('hidden');
     }
-
-    // Show known price immediately while fetching
     const known = getPrice(ticker);
     if (known) {
         document.getElementById('current-price').textContent =
-            '$'+known.price.toLocaleString(undefined,{minimumFractionDigits:2});
+            '$' + known.price.toLocaleString(undefined, {minimumFractionDigits:2});
         document.getElementById('effective-date-val').textContent = known.date;
     } else {
         document.getElementById('current-price').textContent = '···';
     }
-
     const history = await fetchHistory(ticker);
     if (thisReq !== loadRequestId) return;
-
     if (history && history.length) {
-        const prices   = history.map(h=>h.price);
-        const lastP    = prices[prices.length-1];
-        const lastD    = history[history.length-1].date;
-
+        const prices = history.map(h => h.price);
+        const lastP  = prices[prices.length-1];
+        const lastD  = history[history.length-1].date;
         savePrice(ticker, lastP, lastD);
-
         activeStock = {
-            ticker, dates:history.map(h=>h.date), prices,
-            sma50:calcSMA(prices,50), sma200:calcSMA(prices,200)
+            ticker, dates: history.map(h=>h.date), prices,
+            sma50: calcSMA(prices,50), sma200: calcSMA(prices,200)
         };
-
         document.getElementById('current-price').textContent =
-            '$'+lastP.toLocaleString(undefined,{minimumFractionDigits:2});
+            '$' + lastP.toLocaleString(undefined, {minimumFractionDigits:2});
         document.getElementById('effective-date-val').textContent = lastD;
         document.getElementById('sync-status').textContent = 'LIVE';
         document.getElementById('sync-status').style.color = '#4ade80';
-
-        setTimeout(()=>updateTrendRange('1Y'), 0);
+        setTimeout(() => updateTrendRange('1Y'), 0);
         updateUI();
     } else if (known) {
         document.getElementById('sync-status').textContent = 'LAST KNOWN';
@@ -633,26 +579,24 @@ function calcSMA(data, period) {
     return data.map((_,i) => i<period-1 ? null :
         data.slice(i-period+1,i+1).reduce((a,b)=>a+b,0)/period);
 }
-
 function updateTrendRange(range, btn) {
     if (btn) { document.querySelectorAll('.btn-range').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
-    const n = {'30D':30,'6M':126,'1Y':252,'2Y':504}[range]||252;
-    renderChart(activeStock.dates.slice(-n),activeStock.prices.slice(-n),
-                activeStock.sma50.slice(-n),activeStock.sma200.slice(-n));
+    const n = {'30D':30,'6M':126,'1Y':252,'2Y':504}[range] || 252;
+    renderChart(activeStock.dates.slice(-n), activeStock.prices.slice(-n),
+                activeStock.sma50.slice(-n), activeStock.sma200.slice(-n));
 }
-
 function renderChart(labels, p, s50, s200) {
     const ctx = document.getElementById('stockChart').getContext('2d');
     if (chartInstance) chartInstance.destroy();
     chartInstance = new Chart(ctx, {
-        type:'line',
-        data:{ labels, datasets:[
-            {label:'Price',  data:p,   borderColor:'#3b82f6',borderWidth:2,pointRadius:0,fill:true,backgroundColor:'rgba(59,130,246,0.05)'},
-            {label:'50 SMA', data:s50, borderColor:'#fbbf24',borderWidth:1,pointRadius:0},
-            {label:'200 SMA',data:s200,borderColor:'#ef4444',borderWidth:1,pointRadius:0}
+        type: 'line',
+        data: { labels, datasets: [
+            {label:'Price',  data:p,   borderColor:'#3b82f6', borderWidth:2, pointRadius:0, fill:true, backgroundColor:'rgba(59,130,246,0.05)'},
+            {label:'50 SMA', data:s50, borderColor:'#fbbf24', borderWidth:1, pointRadius:0},
+            {label:'200 SMA',data:s200,borderColor:'#ef4444', borderWidth:1, pointRadius:0}
         ]},
-        options:{
-            responsive:true,maintainAspectRatio:false,
+        options: {
+            responsive:true, maintainAspectRatio:false,
             plugins:{legend:{display:true,labels:{color:'#94a3b8',font:{size:10,weight:'800'}}}},
             scales:{
                 x:{ticks:{color:'#475569',maxTicksLimit:8},grid:{display:false}},
@@ -662,9 +606,9 @@ function renderChart(labels, p, s50, s200) {
     });
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
 //  STOCK DATA
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════
 const sp100Data = [
     {t:"AAPL",n:"Apple Inc.",s:"Technology",d:"Consumer electronics, iPhone, Mac, services."},
     {t:"MSFT",n:"Microsoft Corp.",s:"Technology",d:"Software, Azure cloud, Office 365."},
