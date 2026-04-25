@@ -441,11 +441,24 @@ async function runBackgroundSync(codename) {
         if (cloud) {
             userData = cloud;
             updateUI();
+            syncEl.textContent = 'PORTFOLIO ✓';
         } else if (!getPortfolioLocal(codename)) {
-            // New student — create cloud record
+            syncEl.textContent = 'CREATING...';
+            await cloudSave(codename, userData);
+            syncEl.textContent = 'CREATED ✓';
+        } else {
+            // No cloud record but have local — treat as new and save to cloud
+            syncEl.textContent = 'UPLOADING...';
             await cloudSave(codename, userData);
         }
-    } catch(e) { console.warn('Cloud load failed:', e.message); }
+    } catch(e) {
+        console.warn('Cloud load failed:', e.message);
+        syncEl.textContent = 'CLOUD ERR';
+        syncEl.style.color = '#f87171';
+        // Wait 2s so error is visible, then continue
+        await new Promise(r => setTimeout(r, 2000));
+        syncEl.style.color = '';
+    }
 
     // B — Sync price bin
     try {
